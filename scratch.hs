@@ -49,12 +49,22 @@ evalRule s (ReplaceExtensionRule r e) = let matchVal = s =~ r :: String
 class Actionable a where
     execAction :: a -> [(FilePath, FilePath)] -> IO ()
 
-data Actionable a => Action a = Action Rule a
+-- Actions have a Rule that gathers files, a transformation function, and an Actionable
+data Actionable a => Action a = Action Rule (FilePath -> FilePath) a 
+
+f --> g = g.f
 
 --function to gather all of the files an action will operate on
 gatherFilesByRule :: Rule -> [FilePath] -> [(FilePath, FilePath)]
 gatherFilesByRule r files = foldl' f [] files
     where f xs path = if (isJust ruleResult) then xs ++ [(path, (fromJust ruleResult))] else xs where ruleResult = evalRule path r
+
+transformFiles files f = map (\(s, d) -> (s, f d)) files
+
+runAction :: Actionable a => Action a -> [FilePath] -> IO ()
+runAction (Action r f impl) files = let gatheredFiles = gatherFilesByRule r files
+                                        finalFiles = transformFiles gatheredFiles f
+                                    in execAction impl finalFiles
 
 main = do
     args <- Env.getArgs
