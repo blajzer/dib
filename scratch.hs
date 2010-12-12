@@ -4,6 +4,7 @@ import Control.Monad
 import Data.Array
 import Data.Maybe
 import Data.List
+import System.Cmd (system)
 import System.Directory as D
 import System.Environment as Env
 import System.FilePath
@@ -66,7 +67,28 @@ runAction (Action r f impl) files = let gatheredFiles = gatherFilesByRule r file
                                         finalFiles = transformFiles gatheredFiles f
                                     in execAction impl finalFiles
 
+data CxxCompileActionable = CxxCompileActionable {
+   cxxCompilerBin :: FilePath,
+   cxxCompileFlags :: String,
+   cxxCompilerCmdFunc :: CxxCompileActionable -> (FilePath, FilePath) -> String
+   }
+
+instance Actionable CxxCompileActionable where
+     execAction a files = let compilationStrings = map (cxxCompilerCmdFunc a a) files in mapM_ system compilationStrings 
+
+gxxCmdFunc a (src, dest) = (cxxCompilerBin a) ++ " " ++ (cxxCompileFlags a) ++ " -o " ++ dest ++ " -c " ++ src
+   
+gxxCompiler = CxxCompileActionable {
+    cxxCompilerBin = "g++",
+    cxxCompileFlags = "-Wall -O3",
+    cxxCompilerCmdFunc = gxxCmdFunc
+}
+
+cppCompileAction = Action (ReplaceExtensionRule ".cpp$" ".o") id gxxCompiler
+
+
 main = do
     args <- Env.getArgs
-    mapM_ putStrLn args
+    srcFiles <- rGetFilesInDir "testSrc"
+    runAction cppCompileAction srcFiles
     return ()
