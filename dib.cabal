@@ -42,15 +42,15 @@ Build-type:          Simple
 -- Extra-source-files:  
 
 -- Constraint on the version of Cabal needed to build this package.
-Cabal-version:       >=1.2
+Cabal-version:       >=1.4
 
 
 Library
   -- Modules exported by the library.
-  -- Exposed-modules:     
+  Exposed-modules: Dib, Dib.Actions
   
   -- Packages needed in order to build this package.
-  Build-depends: regex-pcre >= 0.94      
+  Build-depends: regex-pcre-builtin >= 0.94, regex-base >= 0.93, filepath >= 1.1, base >= 4, directory >= 1.0, process >= 1.0, array >= 0.3
   
   -- Modules not exported by this package.
   -- Other-modules:       
