@@ -17,9 +17,19 @@ data SrcTransform = OneToOne FilePath FilePath
                   | ManyToMany [FilePath] [FilePath]
                   deriving (Show)
 
+-- extracts a list of targets from a list of SrcTransforms
+extractTargets xs = foldl' f [] xs
+    where f targets (OneToOne s d) = targets ++ [d]
+          f targets (OneToMany s d) = targets ++ d
+          f targets (ManyToOne s d) = targets ++ [d]
+          f targets (ManyToMany s d) = targets ++ d
+
 -- A function used by a Rule to piece together the result String
+type GatherFunc = [FilePath] -> [FilePath]
 type RuleFunc = String -> (Array Int (MatchOffset, MatchLength)) -> Maybe String
-data Rule = GenericRule String RuleFunc
+type BindFunc = [String] -> [SrcTransform]
+
+data Rule = GenericRule String RuleFunc BindFunc
           | ReplaceExtensionRule String String
                                             
 -- Actions have an internal Rule, if it matches, the Action executes (through this interface)
@@ -33,7 +43,7 @@ f --> g = g.f
 
 -- rule evaluation function
 evalRule :: String -> Rule -> Maybe String
-evalRule s (GenericRule r f) = f s (s =~ r)
+evalRule s (GenericRule r f b) = f s (s =~ r)
 evalRule s (ReplaceExtensionRule r e) = let matchVal = s =~ r :: String
                                         in if matchVal /= "" then
                                             Just (replaceExtension s e)
@@ -45,8 +55,8 @@ gatherFilesByRule :: Rule -> [FilePath] -> [SrcTransform]
 gatherFilesByRule r files = foldl' f [] files
     where f xs path = if (isJust ruleResult) then xs ++ [(OneToOne path (fromJust ruleResult))] else xs where ruleResult = evalRule path r
 
-runAction :: Actionable a => Action a -> [FilePath] -> IO ()
-runAction (Action r impl) files = execAction impl $ gatherFilesByRule r files
+runAction :: Actionable a => Action a -> [FilePath] -> IO [FilePath]
+runAction (Action r impl) files = let gatheredFiles = gatherFilesByRule r files in (execAction impl gatheredFiles) >> (return $ extractTargets gatheredFiles)
 
 -- functions to handle recursively spidering a directory
 filePathDeterminer f = D.doesDirectoryExist f >>= \d -> return $ (f, d)
