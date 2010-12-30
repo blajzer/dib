@@ -16,6 +16,13 @@ instance Rule ReplaceExtensionRule where
     
 evalReplaceExtensionRule (ReplaceExtensionRule ext newExt) files =
     let extRegex = "\\." ++ ext ++ "$"
-        matchFunc file = if (file =~ extRegex) /= "" then Just (replaceExtension file newExt) else Nothing
-    in zipWith (OneToOne) files (map fromJust $ filter isJust $ map matchFunc files)
+        matchFunc file = if (file =~ extRegex) /= "" then Just (OneToOne file (replaceExtension file newExt)) else Nothing
+    in map fromJust $ filter isJust $ map matchFunc files
 
+-- Binds all source files to one output file
+data ManyToOneRule = ManyToOneRule String
+
+instance Rule ManyToOneRule where
+    evalRule = evalManyToOneRule
+
+evalManyToOneRule (ManyToOneRule out) files = [ManyToOne files out]

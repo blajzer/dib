@@ -11,7 +11,7 @@ data CompilerActionable = CompilerActionable {
    }
 
 instance Actionable CompilerActionable where
-    execAction a files = let compilationStrings = map (compilerCmdFunc a a) files in mapM_ system compilationStrings 
+    execAction a files = let compilationStrings = map (compilerCmdFunc a a) files in mapM_ (\x -> putStrLn x >> system x) compilationStrings 
 
 
 data LinkerActionable = LinkerActionable {
@@ -21,4 +21,6 @@ data LinkerActionable = LinkerActionable {
     }
 
 instance Actionable LinkerActionable where
-    execAction a files = undefined
+    execAction a files = let linkerStrings = map (linkerCmdFunc a a) files in mapM_ (\x -> putStrLn x >> system x) linkerStrings
+
+
