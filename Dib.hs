@@ -22,8 +22,6 @@ extractTargets xs = foldl' f [] xs
 
 -- A function used by a Rule to piece together the result String
 type GatherFunc = [FilePath] -> IO [FilePath]
---type RuleFunc = String -> (Array Int (MatchOffset, MatchLength)) -> Maybe String
---type BindFunc = [String] -> [SrcTransform]
                                             
 class Actionable a where
     execAction :: a -> [SrcTransform] -> IO ()
@@ -34,18 +32,6 @@ class Rule r where
 -- Actions have a Rule that groups files into a set of transformations
 --  and an Actionable that processes these transformations
 data (Actionable a, Rule r) => Action r a = Action r a
-
-f --> g = g.f
-
--- rule evaluation function
-{--evalRule :: String -> Rule -> Maybe String
-evalRule s (GenericRule r f b) = f s (s =~ r)
-evalRule s (ReplaceExtensionRule r e) = let matchVal = s =~ r :: String
-                                        in if matchVal /= "" then
-                                            Just (replaceExtension s e)
-                                        else
-                                            Nothing
---}
 
 runAction :: (Actionable a, Rule r) => Action r a -> [FilePath] -> IO [FilePath]
 runAction (Action rule impl) files = let gatheredFiles = evalRule rule files in (execAction impl gatheredFiles) >> (return $ extractTargets gatheredFiles)
