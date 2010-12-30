@@ -2,6 +2,8 @@ module Main where
 
 import Dib
 import Dib.Actions
+import Dib.Funcs
+import Dib.Rules
 import Control.Monad
 import System.Environment as Env
 import System.Cmd (system)
@@ -14,7 +16,7 @@ gxxCompiler = CompilerActionable {
     compilerCmdFunc = gxxCmdFunc
 }
 
-cppCompileAction = Action (ReplaceExtensionRule ".cpp$" ".o") gxxCompiler
+cppCompileAction = Action (ReplaceExtensionRule "cpp" "o") gxxCompiler
 
 main = do
     args <- Env.getArgs
