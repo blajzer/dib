@@ -31,6 +31,13 @@ extractTargets xs = foldl' f [] xs
           f targets (OneToMany s d) = targets ++ d
           f targets (ManyToOne s d) = targets ++ [d]
           f targets (ManyToMany s d) = targets ++ d
+          
+-- extracts a list of sources from a list of SrcTransforms
+extractSrcs xs = foldl' f [] xs
+    where f srcs (OneToOne s d) = srcs ++ [s]
+          f srcs (OneToMany s d) = srcs ++ [s]
+          f srcs (ManyToOne s d) = srcs ++ s
+          f srcs (ManyToMany s d) = srcs ++ s
                                             
 class Actionable a where
     execAction :: a -> [SrcTransform] -> IO ()
@@ -44,7 +51,18 @@ data (Actionable a, Rule r) => Action r a = Action r a
 
 --TODO: modify this to pass in the real map
 runAction :: (Actionable a, Rule r) => Action r a -> [FilePath] -> IO [FilePath]
-runAction (Action rule impl) files = let gatheredFiles = evalRule rule files in (filterM (shouldBuildTransform M.empty) gatheredFiles) >>= (execAction impl) >> (return $ extractTargets gatheredFiles)
+runAction (Action rule impl) files =
+    let gatheredFiles = evalRule rule files
+    in do db <- loadDatabase
+          filteredTargets <- filterM (shouldBuildTransform db) gatheredFiles
+          execAction impl filteredTargets
+          newDb <- updateDBFromTargets db $ extractSrcs filteredTargets
+          writeDatabase newDb
+          return $ extractTargets gatheredFiles
+
+updateDBFromTargets m targets = foldM foldFunc m targets
+    where foldFunc m f = do timeStamp <- getTimestamp f
+                            return $ M.insert f timeStamp m   
 
 (<||>) :: IO Bool -> IO Bool -> IO Bool
 (<||>) = liftM2 (||)
@@ -61,7 +79,7 @@ hasSrcChanged :: M.Map FilePath Integer -> [FilePath] -> IO Bool
 hasSrcChanged m f = let filesInMap = zip f $ map (flip M.lookup m) f
                         checkTimeStamps _ (_, Nothing) = return True
                         checkTimeStamps b (f, Just s) = (getTimestamp f) >>= (\t -> return $ b || (t /= s))
-                    in foldM checkTimeStamps True filesInMap
+                    in foldM checkTimeStamps False filesInMap
 
 getTimestamp f = do doesExist <- D.doesFileExist f
                     if doesExist then D.getModificationTime f >>= extractSeconds else return 0
@@ -74,5 +92,5 @@ loadDatabase = do fileExists <- D.doesFileExist ".dibdb"
                   where handleEither (Left _) = M.empty
                         handleEither (Right a) = a
                         
-writeDatabase :: (M.Map FilePath Int) -> IO ()
+writeDatabase :: (M.Map FilePath Integer) -> IO ()
 writeDatabase m = do B.writeFile ".dibdb" $ encode m
