@@ -50,7 +50,17 @@ Library
   Exposed-modules: Dib, Dib.Actions, Dib.Funcs, Dib.Rules
   
   -- Packages needed in order to build this package.
-  Build-depends: regex-pcre-builtin >= 0.94, regex-base >= 0.93, filepath >= 1.1, base >= 4, directory >= 1.0, process >= 1.0, array >= 0.3
+  Build-depends: regex-pcre-builtin >= 0.94,
+                 regex-base >= 0.93,
+                 filepath >= 1.1,
+                 base >= 4 && < 5,
+                 directory >= 1 && < 2,
+                 process >= 1.0 && < 2,
+                 containers >= 0.3 && < 0.4,
+                 hslogger >= 1.1 && < 2,
+                 cereal >= 0.3 && < 0.4,
+                 bytestring >= 0.9.1 && < 0.9.2,
+                 old-time >= 1
   
   -- Modules not exported by this package.
   -- Other-modules:       
