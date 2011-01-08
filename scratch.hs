@@ -10,7 +10,7 @@ import Control.Monad
 import System.Environment as Env
 import System.Cmd (system)
 
-gxxCmdFunc a (OneToOne src dest) = (compilerBin a) ++ " " ++ (compilerFlags a) ++ " -o " ++ dest ++ " -c " ++ src
+gxxCmdFunc a (OneToOne src dest) = compilerBin a ++ " " ++ compilerFlags a ++ " -o " ++ dest ++ " -c " ++ src
 
 gxxCompiler = CompilerActionable {
     compilerBin = "g++",
@@ -20,7 +20,7 @@ gxxCompiler = CompilerActionable {
 
 cppCompileAction = Action (ReplaceExtensionRule "cpp" "o") gxxCompiler
 
-gxxLinkFunc a (ManyToOne src dest) = (linkerBin a) ++ " " ++ (linkerFlags a) ++ " -o " ++ dest ++ " " ++ (intercalate " " src) 
+gxxLinkFunc a (ManyToOne src dest) = linkerBin a ++ " " ++ linkerFlags a ++ " -o " ++ dest ++ " " ++ unwords src 
 
 gxxLinker = LinkerActionable {
     linkerBin = "g++",

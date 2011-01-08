@@ -70,15 +70,15 @@ updateDBFromTargets m targets = foldM foldFunc m targets
 -- function for filtering transforms based on them already being taken care of
 -- TODO: add in something that queries the database
 shouldBuildTransform :: M.Map FilePath Integer -> SrcTransform -> IO Bool
-shouldBuildTransform m (OneToOne s d) = hasSrcChanged m [s] <||> (liftM not $ D.doesFileExist d)
-shouldBuildTransform m (OneToMany s ds) = hasSrcChanged m [s] <||> (liftM (not.and) $ mapM D.doesFileExist ds)
-shouldBuildTransform m (ManyToOne ss d) = hasSrcChanged m ss <||> (liftM not $ D.doesFileExist d)
-shouldBuildTransform m (ManyToMany ss ds) = hasSrcChanged m ss <||> (liftM (not.and) $ mapM D.doesFileExist ds)
+shouldBuildTransform m (OneToOne s d) = hasSrcChanged m [s] <||> liftM not (D.doesFileExist d)
+shouldBuildTransform m (OneToMany s ds) = hasSrcChanged m [s] <||> liftM (not.and) (mapM D.doesFileExist ds)
+shouldBuildTransform m (ManyToOne ss d) = hasSrcChanged m ss <||> liftM not (D.doesFileExist d)
+shouldBuildTransform m (ManyToMany ss ds) = hasSrcChanged m ss <||> liftM (not.and) (mapM D.doesFileExist ds)
 
 hasSrcChanged :: M.Map FilePath Integer -> [FilePath] -> IO Bool
 hasSrcChanged m f = let filesInMap = zip f $ map (flip M.lookup m) f
                         checkTimeStamps _ (_, Nothing) = return True
-                        checkTimeStamps b (f, Just s) = (getTimestamp f) >>= (\t -> return $ b || (t /= s))
+                        checkTimeStamps b (f, Just s) = getTimestamp f >>= (\t -> return $ b || (t /= s))
                     in foldM checkTimeStamps False filesInMap
 
 getTimestamp f = do doesExist <- D.doesFileExist f
@@ -92,5 +92,5 @@ loadDatabase = do fileExists <- D.doesFileExist ".dibdb"
                   where handleEither (Left _) = M.empty
                         handleEither (Right a) = a
                         
-writeDatabase :: (M.Map FilePath Integer) -> IO ()
-writeDatabase m = do B.writeFile ".dibdb" $ encode m
+writeDatabase :: M.Map FilePath Integer -> IO ()
+writeDatabase m = B.writeFile ".dibdb" $ encode m
