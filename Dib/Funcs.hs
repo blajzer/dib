@@ -1,4 +1,6 @@
-module Dib.Funcs where
+module Dib.Funcs (
+    rGetFilesInDir
+    ) where
 
 import Dib
 import Data.List
@@ -19,6 +21,8 @@ directorySplitter dC = foldl' splitter ([], []) dC
 
 fixFilePaths root = map (root </>)
 
+-- | Recursively gets all files in the given directory and its subdirectories.
+rGetFilesInDir :: FilePath -> IO [FilePath]
 rGetFilesInDir dir = do
     contents <- D.getDirectoryContents dir
     filtContents <- mapM filePathDeterminer $ fixFilePaths dir $ filePathFilter contents

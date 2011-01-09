@@ -1,8 +1,12 @@
-module Dib.Actions where
+module Dib.Actions (
+    CompilerActionable(CompilerActionable),
+    LinkerActionable(LinkerActionable) 
+    ) where
 
 import Dib
 import System.Cmd (system)
 
+--TODO: is it possible to do something about the duplication here?
 
 data CompilerActionable = CompilerActionable {
    compilerBin :: FilePath,

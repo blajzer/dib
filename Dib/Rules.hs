@@ -1,4 +1,7 @@
-module Dib.Rules where
+module Dib.Rules (
+    ReplaceExtensionRule(ReplaceExtensionRule),
+    ManyToOneRule(ManyToOneRule)
+    ) where
 
 import Dib
 import Data.Maybe
@@ -7,8 +10,7 @@ import Text.Regex.Base
 import Text.Regex.PCRE
 import Text.Regex.PCRE.String
 
--- Replaces the first string (the extension) with the second and binds OneToOne
---  also filters out any file not of the desired extension
+-- | Rule that generates OneToOne transforms by replacing the given extension
 data ReplaceExtensionRule = ReplaceExtensionRule String String
 
 instance Rule ReplaceExtensionRule where
@@ -19,7 +21,7 @@ evalReplaceExtensionRule (ReplaceExtensionRule ext newExt) files =
         matchFunc file = if (file =~ extRegex) /= "" then Just (OneToOne file (replaceExtension file newExt)) else Nothing
     in map fromJust $ filter isJust $ map matchFunc files
 
--- Binds all source files to one output file
+-- | Rule that just binds all input files into one output file
 data ManyToOneRule = ManyToOneRule String
 
 instance Rule ManyToOneRule where

@@ -1,8 +1,19 @@
+-- | Dib is intended to be a replacement for GNU make which is both easier to
+--   work with and more flexible. The aim is to make simple tasks simple to describe.
+--
+--   The initial motivation was that the proverbial \"one line makefile\" should work for
+--   projects that are more complex than the trivial case. Secondary motivation was
+--   that a build system shouldn't have its own made up syntax. In the case of
+--   both make and Jam, their syntax only cripples the user's ability to express
+--   the task at hand.
+--
+--   Build scripts in Dib are actually programs that import the "Dib" module and
+--   call its functions.
+--
+--   TODO: insert example script here
 module Dib (SrcTransform(OneToOne, OneToMany, ManyToOne, ManyToMany),
-            Actionable,
-            execAction,
-            Rule,
-            evalRule,
+            Actionable(execAction),
+            Rule(evalRule),
             Action(Action),
             runAction
             ) where
@@ -18,7 +29,12 @@ import System.Directory as D
 import System.FilePath
 import System.Time as T
 
--- Data type for mapping between src and destination files
+-- | A representation of a transformation from a given set of source files to
+--   a set of destination files. These are processed by actions to make the
+--   transformation happen.
+--
+--   As a simple example, C source code would be represented as a 'OneToOne' of the .c to .o files,
+--   and the link step would be a 'ManyToOne' of the .o's to the final executable.
 data SrcTransform = OneToOne FilePath FilePath
                   | OneToMany FilePath [FilePath]
                   | ManyToOne [FilePath] FilePath
@@ -38,18 +54,23 @@ extractSrcs xs = foldl' f [] xs
           f srcs (OneToMany s d) = srcs ++ [s]
           f srcs (ManyToOne s d) = srcs ++ s
           f srcs (ManyToMany s d) = srcs ++ s
-                                            
+
+-- | Actionable is the interface through which actions affect the transformations
+--   described by the 'SrcTransform's.                                            
 class Actionable a where
     execAction :: a -> [SrcTransform] -> IO ()
 
+-- | A Rule takes a list of 'FilePath's and produces a list of 'SrcTransform's.
+--   One execution of the rule must take all files and produce all transforms
+--   that an action will be executing on.
 class Rule r where
     evalRule :: r -> [FilePath] -> [SrcTransform]
 
--- Actions have a Rule that groups files into a set of transformations
---  and an Actionable that processes these transformations
+-- | Actions have a 'Rule' that groups files into a set of transformations
+--  and an 'Actionable' that processes these transformations
 data (Actionable a, Rule r) => Action r a = Action r a
 
---TODO: modify this to pass in the real map
+-- | Runs an action on a list of input files.
 runAction :: (Actionable a, Rule r) => Action r a -> [FilePath] -> IO [FilePath]
 runAction (Action rule impl) files =
     let gatheredFiles = evalRule rule files
@@ -68,7 +89,6 @@ updateDBFromTargets m targets = foldM foldFunc m targets
 (<||>) = liftM2 (||)
 
 -- function for filtering transforms based on them already being taken care of
--- TODO: add in something that queries the database
 shouldBuildTransform :: M.Map FilePath Integer -> SrcTransform -> IO Bool
 shouldBuildTransform m (OneToOne s d) = hasSrcChanged m [s] <||> liftM not (D.doesFileExist d)
 shouldBuildTransform m (OneToMany s ds) = hasSrcChanged m [s] <||> liftM (not.and) (mapM D.doesFileExist ds)
