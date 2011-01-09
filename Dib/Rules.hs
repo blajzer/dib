@@ -1,6 +1,7 @@
 module Dib.Rules (
     ReplaceExtensionRule(ReplaceExtensionRule),
-    ManyToOneRule(ManyToOneRule)
+    ManyToOneRule(ManyToOneRule),
+    DummyRule(DummyRule)
     ) where
 
 import Dib
@@ -28,3 +29,9 @@ instance Rule ManyToOneRule where
     evalRule = evalManyToOneRule
 
 evalManyToOneRule (ManyToOneRule out) files = [ManyToOne files out]
+
+-- | Rule that just returns a dummy transform
+data DummyRule = DummyRule
+
+instance Rule DummyRule where
+	evalRule _ _ = [OneToOne "" ""]

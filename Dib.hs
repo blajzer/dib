@@ -12,7 +12,7 @@
 --
 --   TODO: insert example script here
 module Dib (SrcTransform(OneToOne, OneToMany, ManyToOne, ManyToMany),
-            Actionable(execAction),
+            Actionable(generateActionCmd),
             Rule(evalRule),
             Action(Action),
             runAction
@@ -58,7 +58,9 @@ extractSrcs xs = foldl' f [] xs
 -- | Actionable is the interface through which actions affect the transformations
 --   described by the 'SrcTransform's.                                            
 class Actionable a where
-    execAction :: a -> [SrcTransform] -> IO ()
+    --execAction :: a -> [SrcTransform] -> IO ()
+    -- | Given a 'SrcTransform', this generates a command to be executed.
+    generateActionCmd :: a -> SrcTransform -> String
 
 -- | A Rule takes a list of 'FilePath's and produces a list of 'SrcTransform's.
 --   One execution of the rule must take all files and produce all transforms
@@ -68,12 +70,13 @@ class Rule r where
 
 -- | Actions have a 'Rule' that groups files into a set of transformations
 --  and an 'Actionable' that processes these transformations
-data (Actionable a, Rule r) => Action r a = Action r a
+data (Actionable a, Rule r) => Action r a = Action r a 
 
 -- | Runs an action on a list of input files.
 runAction :: (Actionable a, Rule r) => Action r a -> [FilePath] -> IO [FilePath]
 runAction (Action rule impl) files =
     let gatheredFiles = evalRule rule files
+        execAction a targets = mapM_ (\x -> putStrLn x >> system x) $ map (generateActionCmd a) targets
     in do db <- loadDatabase
           filteredTargets <- filterM (shouldBuildTransform db) gatheredFiles
           execAction impl filteredTargets

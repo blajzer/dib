@@ -1,12 +1,11 @@
 module Dib.Actions (
-    CompilerActionable(CompilerActionable),
-    LinkerActionable(LinkerActionable) 
+    CompilerActionable(CompilerActionable, compilerBin, compilerFlags, compilerCmdFunc),
+    gxxCompiler,
+    CommandActionable(CommandActionable)
     ) where
 
 import Dib
 import System.Cmd (system)
-
---TODO: is it possible to do something about the duplication here?
 
 data CompilerActionable = CompilerActionable {
    compilerBin :: FilePath,
@@ -15,16 +14,19 @@ data CompilerActionable = CompilerActionable {
    }
 
 instance Actionable CompilerActionable where
-    execAction a files = let compilationStrings = map (compilerCmdFunc a a) files in mapM_ (\x -> putStrLn x >> system x) compilationStrings 
+	generateActionCmd a = compilerCmdFunc a a
 
+gxxCmdFunc a (OneToOne src dest) = compilerBin a ++ " " ++ compilerFlags a ++ " -o " ++ dest ++ " -c " ++ src
+gxxCmdFunc a (ManyToOne src dest) = compilerBin a ++ " " ++ compilerFlags a ++ " -o " ++ dest ++ " " ++ unwords src 
 
-data LinkerActionable = LinkerActionable {
-    linkerBin :: FilePath,
-    linkerFlags :: String,
-    linkerCmdFunc :: LinkerActionable -> SrcTransform -> String
+gxxCompiler = CompilerActionable {
+    compilerBin = "g++",
+    compilerFlags = "-Wall -O3",
+    compilerCmdFunc = gxxCmdFunc
     }
+ 
+-- | A CommandActionable is an action that just runs the command string with no changes.
+data CommandActionable = CommandActionable String
 
-instance Actionable LinkerActionable where
-    execAction a files = let linkerStrings = map (linkerCmdFunc a a) files in mapM_ (\x -> putStrLn x >> system x) linkerStrings
-
-
+instance Actionable CommandActionable where
+	generateActionCmd (CommandActionable cmd) _ = cmd
