@@ -74,15 +74,15 @@ data (Actionable a, Rule r) => Action r a = Action r a
 
 -- | Runs an action on a list of input files.
 runAction :: (Actionable a, Rule r) => Action r a -> [FilePath] -> IO [FilePath]
-runAction (Action rule impl) files =
+runAction (Action rule impl) files = do
     let gatheredFiles = evalRule rule files
-        execAction a targets = mapM_ (\x -> putStrLn x >> system x) $ map (generateActionCmd a) targets
-    in do db <- loadDatabase
-          filteredTargets <- filterM (shouldBuildTransform db) gatheredFiles
-          execAction impl filteredTargets
-          newDb <- updateDBFromTargets db $ extractSrcs filteredTargets
-          writeDatabase newDb
-          return $ extractTargets gatheredFiles
+    let execAction a targets = mapM_ (\x -> putStrLn x >> system x) $ map (generateActionCmd a) targets 
+    db <- loadDatabase
+    filteredTargets <- filterM (shouldBuildTransform db) gatheredFiles
+    execAction impl filteredTargets
+    newDb <- updateDBFromTargets db $ extractSrcs filteredTargets
+    writeDatabase newDb
+    return $ extractTargets gatheredFiles
 
 updateDBFromTargets m targets = foldM foldFunc m targets
     where foldFunc m f = do timeStamp <- getTimestamp f

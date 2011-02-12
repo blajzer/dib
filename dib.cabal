@@ -60,11 +60,8 @@ Library
                  hslogger >= 1.1 && < 2,
                  cereal >= 0.3 && < 0.4,
                  bytestring >= 0.9.1 && < 0.9.2,
-                 old-time >= 1
-  
-  -- Modules not exported by this package.
-  -- Other-modules:       
-  
-  -- Extra tools (e.g. alex, hsc2hs, ...) needed to build the source.
-  -- Build-tools:         
-  
+                 old-time >= 1    
+
+Executable dib
+  main-is: main.hs
+  --Build-depends :
