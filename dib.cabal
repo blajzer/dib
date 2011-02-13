@@ -47,7 +47,7 @@ Cabal-version:       >=1.4
 
 Library
   -- Modules exported by the library.
-  Exposed-modules: Dib, Dib.Actions, Dib.Funcs, Dib.Rules
+  Exposed-modules: Dib, Dib.Actions, Dib.Funcs, Dib.Rules, Dib.Targets
   
   -- Packages needed in order to build this package.
   Build-depends: regex-pcre-builtin >= 0.94,
