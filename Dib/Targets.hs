@@ -7,6 +7,7 @@ module Dib.Targets (Target(Target),
                     ) where
 
 import Control.Monad
+import Data.Maybe
 import Dib
 import Dib.Actions
 import Dib.Rules
@@ -16,7 +17,7 @@ import Dib.Rules
 data Target = Target String [Stage] [FilePath]
 
 -- | Represents one stage in the chain of build actions.
-data Stage = Stage ([FilePath] -> IO [FilePath])
+data Stage = Stage ([FilePath] -> IO (Maybe [FilePath]))
 
 -- | Makes a build target that always executes a given command.
 makeDummyTarget :: String -> String -> Target
@@ -35,16 +36,21 @@ makeGxxBuildTarget executable compileFlags linkFlags =
             cppO <- runAction cppCompileAction files
             cO <- runAction cCompileAction files
             asmO <- runAction asmCompileAction files
-            return $ cppO ++ cO ++ asmO
+            return $ combiner cppO cO asmO
+        combiner Nothing _ _ = Nothing
+        combiner _ Nothing _ = Nothing
+        combiner _ _ Nothing = Nothing
+        combiner (Just a) (Just b) (Just c) = Just $ a ++ b ++ c
         compileStage = Stage compileFunc
         linkStage = Stage (runAction cppLinkAction)
     in Target executable [compileStage, linkStage] 
 
 -- | Executes a Target.
-execTarget :: Target -> IO [FilePath]
+execTarget :: Target -> IO (Maybe [FilePath])
 execTarget (Target name stages files) = do
     putStrLn $ "Building target: " ++ name
-    foldM runStage files stages
+    foldM runStage (Just files) stages
     where
-        runStage files (Stage f) = f files
+        runStage (Just files) (Stage f) = f files
+        runStage Nothing _ = return Nothing
 

@@ -26,6 +26,7 @@ import Data.Maybe
 import Data.Serialize
 import System.Cmd (system)
 import System.Directory as D
+import System.Exit
 import System.FilePath
 import System.Time as T
 
@@ -74,16 +75,31 @@ class Rule r where
 data (Actionable a, Rule r) => Action r a = Action r a 
 
 -- | Runs an action on a list of input files.
-runAction :: (Actionable a, Rule r) => Action r a -> [FilePath] -> IO [FilePath]
+runAction :: (Actionable a, Rule r) => Action r a -> [FilePath] -> IO (Maybe [FilePath])
 runAction (Action rule impl) files = do
     let gatheredFiles = evalRule rule files
-    let execAction a targets = mapM_ (\x -> putStrLn x >> system x) $ map (generateActionCmd a) targets 
+    let execAction a targets = foldM execFolder ExitSuccess $ map (generateActionCmd a) targets 
     db <- loadDatabase
     filteredTargets <- filterM (shouldBuildTransform db) gatheredFiles
-    execAction impl filteredTargets
-    newDb <- updateDBFromTargets db $ extractSrcs filteredTargets
-    writeDatabase newDb
-    return $ extractTargets gatheredFiles
+    retVal <- execAction impl filteredTargets
+    if isFailure retVal
+     then return Nothing
+     else 
+       do newDb <- updateDBFromTargets db $ extractSrcs filteredTargets
+          writeDatabase newDb
+          return $ Just (extractTargets gatheredFiles)
+    where
+      isFailure (ExitFailure _) = True
+      isFailure _ = False
+      execFolder a b = if isFailure a then
+                            return a
+                       else do
+                           putStrLn b
+                           retVal <- system b
+                           return $ combineExits a retVal
+                           where combineExits _ f@(ExitFailure _) = f
+                                 combineExits _ _ = ExitSuccess
+                          
 
 updateDBFromTargets m targets = foldM foldFunc m targets
     where foldFunc m f = do timeStamp <- getTimestamp f
