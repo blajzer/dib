@@ -37,10 +37,7 @@ instance Eq Target where
   (==) (Target n _ _ _) (Target n2 _ _ _) = n Prelude.== n2
   
 instance Ord Target where
-  (>) (Target n _ _ _) (Target n2 _ _ _) = n Prelude.> n2
-  (<) (Target n _ _ _) (Target n2 _ _ _) = n Prelude.< n2
-  (>=) (Target n _ _ _) (Target n2 _ _ _) = n Prelude.>= n2
-  (<=) (Target n _ _ _) (Target n2 _ _ _) = n Prelude.<= n2
+  compare (Target n _ _ _) (Target n2 _ _ _) = compare n n2
   
 class GatherStrategy a where
   gather :: a -> IO [T.Text]
