@@ -15,7 +15,8 @@ module Dib (SrcTransform(OneToOne, OneToMany, ManyToOne, ManyToMany),
             Actionable(generateActionCmd),
             Rule(evalRule),
             Action(Action),
-            runAction
+            runAction,
+            dib
             ) where
 
 import Control.Monad
@@ -30,6 +31,7 @@ import System.Exit
 import System.FilePath
 import System.Time as T
 
+dib = undefined
 
 -- | A representation of a transformation from a given set of source files to
 --   a set of destination files. These are processed by actions to make the
