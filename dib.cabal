@@ -1,19 +1,19 @@
 name:           dib
 version:        0.2
-cabal-version:  >= 1.2
+cabal-version:  >= 1.4
 build-type:     Simple
 license:        MIT
 author:         Brett Lajzer
 
 library
-  build-depends:   base >= 4, text, containers, mtl, directory, old-time, process, filepath, cereal, bytestring
+  build-depends:   base >= 4 && < 4.4, text, containers >= 0.4, mtl, directory, old-time, process, filepath, cereal, bytestring
   ghc-options:     -Wall
   hs-source-dirs:  src
   exposed-modules: Dib, Dib.Gatherers, Dib.Stage, Dib.Target, Dib.Scanners.CDepScanner
   extensions:      OverloadedStrings
 
 executable dib
-  build-depends:   base >= 4, containers, mtl, old-time, filepath, transformers
+  build-depends:   base >= 4, containers >= 0.4, mtl, old-time, filepath, transformers
   ghc-options:     -Wall
   hs-source-dirs:  .
   main-is: Main.hs

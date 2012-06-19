@@ -11,8 +11,10 @@ module Dib (
 import Dib.Gatherers
 import Dib.Types
 import Control.Monad.State as S
+import qualified Data.ByteString as B
 import qualified Data.List as L
 import qualified Data.Map as Map
+import qualified Data.Serialize as Serialize
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified System.Directory as D
@@ -34,10 +36,14 @@ runBuild :: BuildM a -> BuildState -> IO (a, BuildState)
 runBuild m = runStateT (runBuildImpl m)
 
 loadTimestampDB :: IO TimestampDB
-loadTimestampDB = undefined
+loadTimestampDB = do fileExists <- D.doesFileExist ".dibdb"
+                     fileContents <- if fileExists then B.readFile ".dibdb" else return B.empty
+                     return.handleEither $ Serialize.decode fileContents
+                     where handleEither (Left _) = Map.empty
+                           handleEither (Right a) = a
 
 saveTimestampDB :: TimestampDB -> IO ()
-saveTimestampDB = undefined
+saveTimestampDB m = B.writeFile ".dibdb" $ Serialize.encode m
 
 getTimestampDB :: BuildState -> TimestampDB
 getTimestampDB (BuildState _ db _) = db

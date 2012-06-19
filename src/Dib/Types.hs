@@ -1,8 +1,10 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, ExistentialQuantification #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, ExistentialQuantification, OverloadedStrings #-}
 module Dib.Types where
 
 import Control.Monad.State as S
+import qualified Data.ByteString as ByteString
 import qualified Data.Map as Map
+import qualified Data.Serialize as Serialize
 import qualified Data.Set as Set
 import qualified Data.Text as T
 
@@ -49,4 +51,7 @@ type FilterFunc = (T.Text -> Bool)
 data SingleFileGatherer = SingleFileGatherer T.Text
 data DirectoryGatherer = DirectoryGatherer T.Text FilterFunc
 data FileTreeGatherer = FileTreeGatherer T.Text FilterFunc
-  
+
+instance Serialize.Serialize T.Text where
+  put = return
+  get = return
