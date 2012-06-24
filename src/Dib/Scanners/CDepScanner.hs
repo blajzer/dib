@@ -67,7 +67,10 @@ extractIncludes :: [String] -> [String]
 extractIncludes = filter (\x -> "#include" == (takeWhile (/= ' ') x))
 
 dequoteInclude :: String -> String
-dequoteInclude s = takeWhile (\x -> x /= '\"' && x /= '>') $ tail $ dropWhile (\x -> x /= '\"' && x /= '<') s
+dequoteInclude s = 
+  let endPortion = dropWhile (\x -> x /= '\"' && x /= '<') s
+      endLen = length endPortion
+  in if endLen > 0 then takeWhile (\x -> x /= '\"' && x /= '>') $ tail $ endPortion else []
 
 -- intial pass, removes comments and leading whitespace, then filters out extra lines
 pass1 :: String -> [String]
@@ -75,7 +78,7 @@ pass1 s = filterBlank $ map removeLeadingWS $ lines $ removeComments (removeCR s
 
 -- second pass, cleans up includes
 pass2 :: [String] -> [String]
-pass2 l = map dequoteInclude $ extractIncludes l
+pass2 l = filterBlank $ map dequoteInclude $ extractIncludes l
 
 gatherDependencies :: String -> [String]
 gatherDependencies = pass2.pass1

@@ -113,9 +113,9 @@ buildFailFunc (Left _) _ = return $ Right ""
 runTargetInternal :: Target -> BuildM (Either [SrcTransform] T.Text)
 runTargetInternal t@(Target name _ stages gatherers) = do
   gatheredFiles <- liftIO $ runGatherers gatherers
-  let srcTransforms = map (flip OneToOne "") gatheredFiles
-  targetUpToDate <- needToRunStage (head stages) srcTransforms
-  if targetUpToDate
+  let srcTransforms = map (flip OneToOne "") gatheredFiles 
+  needToBuildTarget <- needToRunStage (head stages) srcTransforms
+  if not needToBuildTarget
     then (liftIO $ putStrLn $ "Target is up to date: \"" ++ T.unpack name ++ "\"") >> return (Left []) else
     do
       stageResult <- foldM stageFoldFunc (Left srcTransforms) stages
@@ -153,5 +153,5 @@ runStage s@(Stage _ _ _ f) m = do
   
 processMappings :: Stage -> [SrcTransform] -> IO [SrcTransform]
 processMappings (Stage _ t d _) m = do
-  let transMap = map t m --transform input-only mappings into input -> output mappings
+  let transMap = t m --transform input-only mappings into input -> output mappings
   mapM d transMap

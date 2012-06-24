@@ -2,7 +2,6 @@
 module Dib.Types where
 
 import Control.Monad.State as S
-import qualified Data.ByteString as ByteString
 import qualified Data.Map as Map
 import qualified Data.Serialize as Serialize
 import qualified Data.Set as Set
@@ -23,8 +22,9 @@ data SrcTransform = OneToOne T.Text T.Text
                  | OneToMany T.Text [T.Text]
                  | ManyToOne [T.Text] T.Text
                  | ManyToMany [T.Text] [T.Text]
+                 deriving (Show)
 
-type InputTransformer = (SrcTransform -> SrcTransform)
+type InputTransformer = ([SrcTransform] -> [SrcTransform])
 type DepScanner = (SrcTransform -> IO SrcTransform)
 type StageFunc = (SrcTransform -> IO (Either SrcTransform T.Text))
 
@@ -53,5 +53,6 @@ data DirectoryGatherer = DirectoryGatherer T.Text FilterFunc
 data FileTreeGatherer = FileTreeGatherer T.Text FilterFunc
 
 instance Serialize.Serialize T.Text where
-  put = return
-  get = return
+  put s = Serialize.putListOf Serialize.put $ T.unpack s
+  get = liftM T.pack $ Serialize.getListOf Serialize.get
+
