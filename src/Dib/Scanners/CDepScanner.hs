@@ -105,26 +105,22 @@ spiderHelper (file:_) = do
   let deps = gatherDependencies c
   s <- get
   put $ s {currentDeps = S.insert (pathToDependency file) (currentDeps s) }
-  _ <- mapM spider deps
-  s <- get
-  put $ s {currentDeps = S.union (currentDeps s) (S.fromList $ map pathToDependency deps) }
+  mapM_ spider deps
   return ()
 
 spiderLauncher file = do
   c <- liftIO $ readFile file
   let deps = gatherDependencies c
-  _ <- mapM spider deps
-  s <- get
-  put $ s {currentDeps = S.union (currentDeps s) (S.fromList $ map pathToDependency deps) }
+  mapM_ spider deps
   return ()
 
-getDepsForFile :: FilePath -> IO [T.Text]
-getDepsForFile file = do
-  (_, s) <- runStateT (runDepGatherer $ spiderLauncher file) (PS {currentDeps=S.empty, searchPaths=["."] })
+getDepsForFile :: [FilePath] -> FilePath -> IO [T.Text]
+getDepsForFile includeDirs file = do
+  (_, s) <- runStateT (runDepGatherer $ spiderLauncher file) (PS {currentDeps=S.empty, searchPaths=[(F.dropFileName file), "."] ++ includeDirs })
   return $ map (T.pack) $ map getPathFromDep $ S.toList (currentDeps s)
 
-cDepScanner :: SrcTransform -> IO SrcTransform
-cDepScanner (OneToOne i o) = getDepsForFile (T.unpack i) >>= \d -> return $ ManyToOne (i:d) o
-cDepScanner (OneToMany i o) = getDepsForFile (T.unpack i) >>= \d -> return $ ManyToMany (i:d) o
-cDepScanner _ = error "Unimplemented. Implement this if it is a valid relationship."
+cDepScanner :: [FilePath] -> SrcTransform -> IO SrcTransform
+cDepScanner includeDirs (OneToOne i o) = getDepsForFile includeDirs (T.unpack i) >>= \d -> return $ ManyToOne (i:d) o
+cDepScanner includeDirs (OneToMany i o) = getDepsForFile includeDirs (T.unpack i) >>= \d -> return $ ManyToMany (i:d) o
+cDepScanner _ _ = error "Unimplemented. Implement this if it is a valid relationship."
 

@@ -32,6 +32,8 @@ dib targets selectedTarget = do
       saveTimestampDB $ getTimestampDB s
       return ()
 
+printSeparator = putStrLn "============================================================"
+
 runBuild :: BuildM a -> BuildState -> IO (a, BuildState)
 runBuild m = runStateT (runBuildImpl m)
 
@@ -105,7 +107,8 @@ runTarget t@(Target name deps _ _) = do
   
 buildFailFunc :: Either [SrcTransform] T.Text -> T.Text -> BuildM (Either [SrcTransform] T.Text)
 buildFailFunc (Right err) name = do
-  liftIO $ putStrLn $ "ERROR: Error building target \"" ++ T.unpack name ++ "\":"
+  liftIO $ printSeparator
+  liftIO $ putStr $ "ERROR: Error building target \"" ++ T.unpack name ++ "\": "
   liftIO $ putStrLn $ T.unpack err
   return $ Right ""
 buildFailFunc (Left _) _ = return $ Right ""
@@ -118,6 +121,8 @@ runTargetInternal t@(Target name _ stages gatherers) = do
   if not needToBuildTarget
     then (liftIO $ putStrLn $ "Target is up to date: \"" ++ T.unpack name ++ "\"") >> return (Left []) else
     do
+      liftIO $ putStrLn $ "Building target \"" ++ T.unpack name ++ "\""
+      liftIO $ printSeparator
       stageResult <- foldM stageFoldFunc (Left srcTransforms) stages
       if isLeft stageResult then targetSuccessFunc t else buildFailFunc stageResult name
 
@@ -139,13 +144,15 @@ needToRunStage s m = do
   return $ not $ null filteredMappings
 
 runStage :: Stage -> [SrcTransform] -> BuildM (Either [SrcTransform] T.Text)
-runStage s@(Stage _ _ _ f) m = do 
+runStage s@(Stage name _ _ f) m = do
+  liftIO $ putStrLn $ "--------------- Running stage \"" ++ (T.unpack name) ++ "\" ---------------"
   depScannedFiles <- liftIO $ processMappings s m
   filteredMappings <- filterMappings depScannedFiles
-  liftIO $ foldM foldFunc (Left []) filteredMappings
+  foldM foldFunc (Left []) filteredMappings
   where foldFunc r@(Right _) _ = return r
         foldFunc a@(Left _) b = do
-          result <- f b
+          result <- liftIO $ f b
+          writeTimestamps result b
           return $ combine a result
           where combine r@(Right _) _ = r
                 combine (Left ml) (Left v) = Left (ml ++ [v])
@@ -155,3 +162,20 @@ processMappings :: Stage -> [SrcTransform] -> IO [SrcTransform]
 processMappings (Stage _ t d _) m = do
   let transMap = t m --transform input-only mappings into input -> output mappings
   mapM d transMap
+
+writeTimestamps :: Either l r -> SrcTransform -> BuildM ()
+writeTimestamps (Right _) _ = return ()
+writeTimestamps (Left _) (OneToOne s d) = writeTimestampHelper $ [s,d]
+writeTimestamps (Left _) (OneToMany s ds) = writeTimestampHelper $ s:ds
+writeTimestamps (Left _) (ManyToOne ss d) = writeTimestampHelper $ d:ss
+writeTimestamps (Left _) (ManyToMany ss ds) = writeTimestampHelper $ ss ++ ds
+
+writeTimestampHelper :: [T.Text] -> BuildM ()
+writeTimestampHelper files = do
+  buildstate <- get
+  let db = getTimestampDB buildstate
+  timestamps <- liftIO $ mapM getTimestamp files
+  let filteredResults = filter (\(_,y) -> y /= 0) $ zip files timestamps
+  let updatedDB = L.foldl' (\d (f, t) -> Map.insert f t d) db filteredResults
+  put $ putTimestampDB buildstate updatedDB
+  return ()
