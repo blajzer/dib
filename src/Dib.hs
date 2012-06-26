@@ -32,6 +32,7 @@ dib targets selectedTarget = do
       saveTimestampDB $ getTimestampDB s
       return ()
 
+printSeparator :: IO ()
 printSeparator = putStrLn "============================================================"
 
 runBuild :: BuildM a -> BuildState -> IO (a, BuildState)
@@ -66,6 +67,16 @@ targetIsUpToDate (BuildState _ _ s) t = Set.member t s
 -- | Filters out up-to-date mappings
 filterMappings :: [SrcTransform] -> BuildM [SrcTransform]
 filterMappings files = get >>= \(BuildState _ db _) -> liftIO $ filterM (shouldBuildMapping db) files
+
+-- | Partitions out up-to-date mappings
+partitionMappings :: [SrcTransform] -> BuildM ([SrcTransform], [SrcTransform])
+partitionMappings files = do
+  s <- get
+  shouldBuild <- liftIO $ mapM (shouldBuildMapping (getTimestampDB s)) files
+  let paired = zip shouldBuild files
+  let (a, b) = L.partition fst paired
+  return $ ((map snd a), (map snd b))
+  
 
 (<||>) :: IO Bool -> IO Bool -> IO Bool
 (<||>) = liftM2 (||)
@@ -137,18 +148,20 @@ stageFoldFunc :: Either [SrcTransform] T.Text -> Stage -> BuildM (Either [SrcTra
 stageFoldFunc (Left t) s = runStage s t
 stageFoldFunc r@(Right _) _ = return r
 
+-- TODO: make this function correct
 needToRunStage :: Stage -> [SrcTransform] -> BuildM Bool
 needToRunStage s m = do
-  depScannedFiles <- liftIO $ processMappings s m
-  filteredMappings <- filterMappings depScannedFiles
-  return $ not $ null filteredMappings
+  return True
+--  depScannedFiles <- liftIO $ processMappings s m
+--  filteredMappings <- filterMappings depScannedFiles
+--  return $ not $ null filteredMappings
 
 runStage :: Stage -> [SrcTransform] -> BuildM (Either [SrcTransform] T.Text)
 runStage s@(Stage name _ _ f) m = do
   liftIO $ putStrLn $ "--------------- Running stage \"" ++ (T.unpack name) ++ "\" ---------------"
   depScannedFiles <- liftIO $ processMappings s m
-  filteredMappings <- filterMappings depScannedFiles
-  foldM foldFunc (Left []) filteredMappings
+  (targetsToBuild, upToDateTargets) <- partitionMappings depScannedFiles
+  foldM foldFunc (Left $ map transferUpToDateTarget upToDateTargets) targetsToBuild
   where foldFunc r@(Right _) _ = return r
         foldFunc a@(Left _) b = do
           result <- liftIO $ f b
@@ -157,7 +170,14 @@ runStage s@(Stage name _ _ f) m = do
           where combine r@(Right _) _ = r
                 combine (Left ml) (Left v) = Left (ml ++ [v])
                 combine (Left _) (Right v) = Right v
-  
+
+-- These might not be quite correct. I guessed at what made sense.
+transferUpToDateTarget :: SrcTransform -> SrcTransform
+transferUpToDateTarget (OneToOne _ d) = OneToOne d ""
+transferUpToDateTarget (OneToMany _ ds) = ManyToOne ds ""
+transferUpToDateTarget (ManyToOne _ d) = OneToOne d ""
+transferUpToDateTarget (ManyToMany _ ds) = ManyToOne ds ""
+
 processMappings :: Stage -> [SrcTransform] -> IO [SrcTransform]
 processMappings (Stage _ t d _) m = do
   let transMap = t m --transform input-only mappings into input -> output mappings
@@ -165,10 +185,10 @@ processMappings (Stage _ t d _) m = do
 
 writeTimestamps :: Either l r -> SrcTransform -> BuildM ()
 writeTimestamps (Right _) _ = return ()
-writeTimestamps (Left _) (OneToOne s d) = writeTimestampHelper $ [s,d]
-writeTimestamps (Left _) (OneToMany s ds) = writeTimestampHelper $ s:ds
-writeTimestamps (Left _) (ManyToOne ss d) = writeTimestampHelper $ d:ss
-writeTimestamps (Left _) (ManyToMany ss ds) = writeTimestampHelper $ ss ++ ds
+writeTimestamps (Left _) (OneToOne s _) = writeTimestampHelper $ [s]
+writeTimestamps (Left _) (OneToMany s _) = writeTimestampHelper $ [s]
+writeTimestamps (Left _) (ManyToOne ss _) = writeTimestampHelper $ ss
+writeTimestamps (Left _) (ManyToMany ss _) = writeTimestampHelper $ ss
 
 writeTimestampHelper :: [T.Text] -> BuildM ()
 writeTimestampHelper files = do
