@@ -32,6 +32,9 @@ data Stage = Stage T.Text InputTransformer DepScanner StageFunc
 
 data Target = Target T.Text [Target] [Stage] [Gatherer]
 
+instance Show Target where
+  show (Target t _ _ _) = T.unpack t
+
 instance Eq Stage where
   (==) (Stage n _ _ _) (Stage n2 _ _ _) = n Prelude.== n2
 
