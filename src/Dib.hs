@@ -127,15 +127,11 @@ buildFailFunc (Left _) _ = return $ Right ""
 runTargetInternal :: Target -> BuildM (Either [SrcTransform] T.Text)
 runTargetInternal t@(Target name _ stages gatherers) = do
   gatheredFiles <- liftIO $ runGatherers gatherers
-  let srcTransforms = map (flip OneToOne "") gatheredFiles 
-  needToBuildTarget <- needToRunStage (head stages) srcTransforms
-  if not needToBuildTarget
-    then (liftIO $ putStrLn $ "Target is up to date: \"" ++ T.unpack name ++ "\"") >> return (Left []) else
-    do
-      liftIO $ putStrLn $ "Building target \"" ++ T.unpack name ++ "\""
-      liftIO $ printSeparator
-      stageResult <- foldM stageFoldFunc (Left srcTransforms) stages
-      if isLeft stageResult then targetSuccessFunc t else buildFailFunc stageResult name
+  let srcTransforms = map (flip OneToOne "") gatheredFiles
+  liftIO $ putStrLn $ "Building target \"" ++ T.unpack name ++ "\""
+  liftIO $ printSeparator
+  stageResult <- foldM stageFoldFunc (Left srcTransforms) stages
+  if isLeft stageResult then targetSuccessFunc t else buildFailFunc stageResult name
 
 targetSuccessFunc :: Target -> BuildM (Either [SrcTransform] T.Text)
 targetSuccessFunc t@(Target name _ _ _) = do
@@ -147,14 +143,6 @@ targetSuccessFunc t@(Target name _ _ _) = do
 stageFoldFunc :: Either [SrcTransform] T.Text -> Stage -> BuildM (Either [SrcTransform] T.Text)
 stageFoldFunc (Left t) s = runStage s t
 stageFoldFunc r@(Right _) _ = return r
-
--- TODO: make this function correct
-needToRunStage :: Stage -> [SrcTransform] -> BuildM Bool
-needToRunStage s m = do
-  return True
---  depScannedFiles <- liftIO $ processMappings s m
---  filteredMappings <- filterMappings depScannedFiles
---  return $ not $ null filteredMappings
 
 runStage :: Stage -> [SrcTransform] -> BuildM (Either [SrcTransform] T.Text)
 runStage s@(Stage name _ _ f) m = do
