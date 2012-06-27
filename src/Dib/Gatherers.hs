@@ -1,11 +1,15 @@
 module Dib.Gatherers(
-  SingleFileGatherer(SingleFileGatherer),
-  DirectoryGatherer(DirectoryGatherer),
-  FileTreeGatherer(FileTreeGatherer),
+  SingleFileGatherer(),
+  DirectoryGatherer(),
+  FileTreeGatherer(),
   Gatherer(),
   wrapGatherStrategy,
-  (<++>),
-  runGatherers
+  runGatherers,
+  makeSingleFileGatherer,
+  makeDirectoryGatherer,
+  makeFileTreeGatherer,
+  matchExtension,
+  matchExtensions
   )where
 
 import Control.Monad
@@ -27,11 +31,17 @@ instance GatherStrategy FileTreeGatherer where
 runGatherers :: [Gatherer] -> IO [T.Text]
 runGatherers gs = mapM (\(Gatherer s) -> gather s) gs >>= \x -> foldM (\a b -> return (a ++ b)) [] x
 
-(<++>) :: GatherStrategy s => [Gatherer] -> s -> [Gatherer]
-l <++> s = l ++ [wrapGatherStrategy s]
-
 wrapGatherStrategy :: GatherStrategy s => s -> Gatherer
 wrapGatherStrategy = Gatherer
+
+makeSingleFileGatherer :: T.Text -> Gatherer
+makeSingleFileGatherer = wrapGatherStrategy.SingleFileGatherer
+
+makeDirectoryGatherer :: T.Text -> FilterFunc -> Gatherer
+makeDirectoryGatherer d = wrapGatherStrategy.DirectoryGatherer d
+
+makeFileTreeGatherer :: T.Text -> FilterFunc -> Gatherer
+makeFileTreeGatherer d = wrapGatherStrategy.FileTreeGatherer d
 
 singleFileGatherFunc :: SingleFileGatherer -> IO [T.Text]
 singleFileGatherFunc (SingleFileGatherer f) = do
@@ -75,3 +85,11 @@ rGetFilesInDir dir = do
     let (dirs, files) = directorySplitter filtContents
     spideredDirs <- mapM rGetFilesInDir dirs
     return $ concat spideredDirs ++ files
+
+matchExtension :: T.Text -> FilterFunc
+matchExtension = T.isSuffixOf
+
+matchExtensions :: [T.Text] -> FilterFunc
+matchExtensions exts file = foldl' foldFunc False exts
+  where foldFunc True _ = True
+        foldFunc False e = T.isSuffixOf e file
