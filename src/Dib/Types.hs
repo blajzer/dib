@@ -7,11 +7,15 @@ import qualified Data.Serialize as Serialize
 import qualified Data.Set as Set
 import qualified Data.Text as T
 
-type BuildArgs = [T.Text]
 type TimestampDB = Map.Map T.Text Integer
 type UpToDateTargets = Set.Set Target
 
 data BuildState = BuildState BuildArgs TimestampDB UpToDateTargets
+
+data BuildArgs = BuildArgs {
+  buildTarget :: T.Text,
+  maxBuildJobs :: Int
+  }
 
 newtype BuildM a = BuildMImpl {
   runBuildImpl :: S.StateT BuildState IO a

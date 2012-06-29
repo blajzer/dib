@@ -18,19 +18,29 @@ import qualified Data.Serialize as Serialize
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified System.Directory as D
+import qualified System.Environment as Env
 import qualified System.Time as Time
 import Data.Maybe
 
-dib :: [Target] -> T.Text -> IO ()
-dib targets selectedTarget = do
+dib :: [Target] -> IO ()
+dib targets = do
+  args <- Env.getArgs
+  let buildArgs = parseArgs args targets
+  let selectedTarget = (buildTarget buildArgs)
   let theTarget = L.find (\(Target name _ _ _) -> name == selectedTarget) targets
   if isNothing theTarget
     then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\"" else
     do
       db <- loadTimestampDB 
-      (_, s) <- runBuild (runTarget $ fromJust theTarget) (BuildState [] db Set.empty)
+      (_, s) <- runBuild (runTarget $ fromJust theTarget) (BuildState buildArgs db Set.empty)
       saveTimestampDB $ getTimestampDB s
       return ()
+
+parseArgs :: [String] -> [Target] -> BuildArgs
+parseArgs args targets =
+  let argsLen = length args
+      target = if argsLen > 0 then (T.pack.head $ args) else (T.pack.show.head $ targets)
+  in BuildArgs { buildTarget = target, maxBuildJobs = 1 }
 
 printSeparator :: IO ()
 printSeparator = putStrLn "============================================================"
