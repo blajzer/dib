@@ -10,6 +10,7 @@ module Dib (
 
 import Dib.Gatherers
 import Dib.Types
+import Control.Concurrent
 import Control.Monad.State as S
 import qualified Data.ByteString as B
 import qualified Data.List as L
@@ -40,7 +41,7 @@ parseArgs :: [String] -> [Target] -> BuildArgs
 parseArgs args targets =
   let argsLen = length args
       target = if argsLen > 0 then (T.pack.head $ args) else (T.pack.show.head $ targets)
-  in BuildArgs { buildTarget = target, maxBuildJobs = 1 }
+  in BuildArgs { buildTarget = target, maxBuildJobs = 4 }
 
 printSeparator :: IO ()
 printSeparator = putStrLn "============================================================"
@@ -69,6 +70,9 @@ getUpToDateTargets (BuildState _ _ t) = t
 
 putUpToDateTargets :: BuildState -> UpToDateTargets -> BuildState
 putUpToDateTargets (BuildState a db _) = BuildState a db
+
+getMaxBuildJobs :: BuildState -> Int
+getMaxBuildJobs (BuildState a _ _) = maxBuildJobs a
 
 -- | Returns whether or not a target is up to date, based on the current build state. 
 targetIsUpToDate :: BuildState -> Target -> Bool
@@ -154,17 +158,33 @@ stageFoldFunc :: Either [SrcTransform] T.Text -> Stage -> BuildM (Either [SrcTra
 stageFoldFunc (Left t) s = runStage s t
 stageFoldFunc r@(Right _) _ = return r
 
+collate :: Int -> [a] -> [[a]]
+collate _ [] = []
+collate n as = [(L.take n as)] ++ (collate n $ L.drop n as)
+
+future :: IO a -> IO (MVar a)
+future thunk = do
+    ref <- newEmptyMVar
+    _ <- forkIO $ thunk >>= putMVar ref
+    return ref
+
+forceAll :: [MVar a] -> IO [a]
+forceAll = mapM takeMVar
+
 runStage :: Stage -> [SrcTransform] -> BuildM (Either [SrcTransform] T.Text)
 runStage s@(Stage name _ _ f) m = do
   liftIO $ putStrLn $ "--------------- Running stage \"" ++ (T.unpack name) ++ "\" ---------------"
   depScannedFiles <- liftIO $ processMappings s m
   (targetsToBuild, upToDateTargets) <- partitionMappings depScannedFiles
-  foldM foldFunc (Left $ map transferUpToDateTarget upToDateTargets) targetsToBuild
+  bs <- get
+  let groupedTargets = collate (getMaxBuildJobs bs) targetsToBuild
+  foldM foldFunc (Left $ map transferUpToDateTarget upToDateTargets) groupedTargets
   where foldFunc r@(Right _) _ = return r
         foldFunc a@(Left _) b = do
-          result <- liftIO $ f b
-          writeTimestamps result b
-          return $ combine a result
+          futures <- liftIO $ mapM future (map f b)
+          results <- liftIO $ forceAll futures
+          mapM_ (uncurry writeTimestamps) (zip results b)
+          return $ L.foldl' combine a results
           where combine r@(Right _) _ = r
                 combine (Left ml) (Left v) = Left (ml ++ [v])
                 combine (Left _) (Right v) = Right v
