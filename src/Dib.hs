@@ -158,18 +158,36 @@ stageFoldFunc :: Either [SrcTransform] T.Text -> Stage -> BuildM (Either [SrcTra
 stageFoldFunc (Left t) s = runStage s t
 stageFoldFunc r@(Right _) _ = return r
 
-collate :: Int -> [a] -> [[a]]
-collate _ [] = []
-collate n as = [(L.take n as)] ++ (collate n $ L.drop n as)
-
 future :: IO a -> IO (MVar a)
 future thunk = do
     ref <- newEmptyMVar
     _ <- forkIO $ thunk >>= putMVar ref
     return ref
 
-forceAll :: [MVar a] -> IO [a]
-forceAll = mapM takeMVar
+-- returns tuple of rest of input, active threads, and results
+spawnStageThreads :: (SrcTransform -> IO (Either l r)) -> Int -> [SrcTransform] -> [(SrcTransform, MVar (Either l r))] -> BuildM ([SrcTransform], [(SrcTransform, MVar (Either l r))], [Either l r])
+spawnStageThreads f m i a = do
+  results <- liftIO $ mapM tryTakeMVar (map snd a)
+  let r = map fromJust $ L.filter isJust results
+  let (active, done) = L.partition (isNothing.fst) (zip results a)
+  let numActive = L.length active
+  let (toSpawn, theRest) = L.splitAt (m - numActive) i
+  futures <- liftIO $ mapM future (map f toSpawn)
+  mapM_ (uncurry writeTimestamps) (map (\((Just res), (src, _)) -> (res, src)) done)
+  return (theRest, (zip toSpawn futures) ++ (map snd active), r)
+
+-- recursively spawns new tasks
+stageHelper :: (SrcTransform -> IO (Either a t)) -> Int -> [SrcTransform] -> [(SrcTransform, MVar (Either a t))] -> Either [a] t -> BuildM (Either [a] t)
+stageHelper f m i a r = do
+  let combine right@(Right _) _ = right
+      combine (Left ml) (Left v) = Left (ml ++ [v])
+      combine (Left _) (Right v) = Right v
+  if (L.length i) > 0  || (L.length a) > 0 then
+    do
+      (i', a', r') <- spawnStageThreads f m i a
+      stageHelper f m i' a' (L.foldl' combine r r')
+   else
+    do return r
 
 runStage :: Stage -> [SrcTransform] -> BuildM (Either [SrcTransform] T.Text)
 runStage s@(Stage name _ _ f) m = do
@@ -177,17 +195,8 @@ runStage s@(Stage name _ _ f) m = do
   depScannedFiles <- liftIO $ processMappings s m
   (targetsToBuild, upToDateTargets) <- partitionMappings depScannedFiles
   bs <- get
-  let groupedTargets = collate (getMaxBuildJobs bs) targetsToBuild
-  foldM foldFunc (Left $ map transferUpToDateTarget upToDateTargets) groupedTargets
-  where foldFunc r@(Right _) _ = return r
-        foldFunc a@(Left _) b = do
-          futures <- liftIO $ mapM future (map f b)
-          results <- liftIO $ forceAll futures
-          mapM_ (uncurry writeTimestamps) (zip results b)
-          return $ L.foldl' combine a results
-          where combine r@(Right _) _ = r
-                combine (Left ml) (Left v) = Left (ml ++ [v])
-                combine (Left _) (Right v) = Right v
+  results <- stageHelper f (getMaxBuildJobs bs) targetsToBuild [] (Left $ map transferUpToDateTarget upToDateTargets)
+  return results
 
 -- These might not be quite correct. I guessed at what made sense.
 transferUpToDateTarget :: SrcTransform -> SrcTransform
