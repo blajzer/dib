@@ -4,18 +4,18 @@ cabal-version:  >= 1.4
 build-type:     Simple
 license:        MIT
 author:         Brett Lajzer
-maintainer:	Brett Lajzer
+maintainer:	    Brett Lajzer
 
 library
   build-depends:   base >= 4 && < 4.4, text, containers >= 0.3 && < 0.4, mtl, directory, old-time, process, filepath, cereal, bytestring
-  ghc-options:     -Wall
+  ghc-options:     -Wall -O2
   hs-source-dirs:  src
   exposed-modules: Dib, Dib.Gatherers, Dib.Stage, Dib.Target, Dib.Types, Dib.Scanners.CDepScanner, Dib.Builders.C
   extensions:      OverloadedStrings
 
 executable dib
   build-depends:   base >= 4 && < 4.4, containers >= 0.3 && < 0.4, mtl, old-time, filepath, transformers
-  ghc-options:     -Wall
+  ghc-options:     -Wall -O2
   hs-source-dirs:  .
   main-is: Main.hs
 

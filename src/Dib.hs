@@ -41,7 +41,7 @@ parseArgs :: [String] -> [Target] -> BuildArgs
 parseArgs args targets =
   let argsLen = length args
       target = if argsLen > 0 then (T.pack.head $ args) else (T.pack.show.head $ targets)
-  in BuildArgs { buildTarget = target, maxBuildJobs = 4 }
+  in BuildArgs { buildTarget = target, maxBuildJobs = 2 }
 
 printSeparator :: IO ()
 printSeparator = putStrLn "============================================================"
