@@ -6,11 +6,13 @@ import qualified Data.Map as Map
 import qualified Data.Serialize as Serialize
 import qualified Data.Set as Set
 import qualified Data.Text as T
+import Data.Word
 
 type TimestampDB = Map.Map T.Text Integer
+type ChecksumDB = Map.Map T.Text Word32
 type UpToDateTargets = Set.Set Target
 
-data BuildState = BuildState BuildArgs TimestampDB UpToDateTargets
+data BuildState = BuildState BuildArgs TimestampDB ChecksumDB UpToDateTargets
 
 data BuildArgs = BuildArgs {
   buildTarget :: T.Text,

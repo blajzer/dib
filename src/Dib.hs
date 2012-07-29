@@ -13,6 +13,7 @@ import Dib.Types
 import Control.Concurrent
 import Control.Monad.State as S
 import qualified Data.ByteString as B
+import qualified Data.Hash.CRC32.GZip as Hash
 import qualified Data.List as L
 import qualified Data.Map as Map
 import qualified Data.Serialize as Serialize
@@ -22,6 +23,11 @@ import qualified System.Directory as D
 import qualified System.Environment as Env
 import qualified System.Time as Time
 import Data.Maybe
+import Data.Word
+
+
+databaseVersion :: Integer
+databaseVersion = 1
 
 dib :: [Target] -> IO ()
 dib targets = do
@@ -32,9 +38,9 @@ dib targets = do
   if isNothing theTarget
     then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\"" else
     do
-      db <- loadTimestampDB 
-      (_, s) <- runBuild (runTarget $ fromJust theTarget) (BuildState buildArgs db Set.empty)
-      saveTimestampDB $ getTimestampDB s
+      (tdb, cdb) <- loadDatabase
+      (_, s) <- runBuild (runTarget $ fromJust theTarget) (BuildState buildArgs tdb cdb Set.empty)
+      saveDatabase (getTimestampDB s) (getChecksumDB s)
       return ()
 
 parseArgs :: [String] -> [Target] -> BuildArgs
@@ -49,44 +55,50 @@ printSeparator = putStrLn "=====================================================
 runBuild :: BuildM a -> BuildState -> IO (a, BuildState)
 runBuild m = runStateT (runBuildImpl m)
 
-loadTimestampDB :: IO TimestampDB
-loadTimestampDB = do fileExists <- D.doesFileExist ".dibdb"
-                     fileContents <- if fileExists then B.readFile ".dibdb" else return B.empty
-                     return.handleEither $ Serialize.decode fileContents
-                     where handleEither (Left _) = Map.empty
-                           handleEither (Right a) = a
+loadDatabase :: IO (TimestampDB, ChecksumDB)
+loadDatabase = do fileExists <- D.doesFileExist ".dibdb"
+                  fileContents <- if fileExists then B.readFile ".dibdb" else return B.empty
+                  return.handleEither $ Serialize.decode fileContents
+                  where handleEither (Left _) = (Map.empty, Map.empty)
+                        handleEither (Right (v, t, c)) = if v == databaseVersion then (t, c) else (Map.empty, Map.empty)
 
-saveTimestampDB :: TimestampDB -> IO ()
-saveTimestampDB m = B.writeFile ".dibdb" $ Serialize.encode m
+saveDatabase :: TimestampDB -> ChecksumDB -> IO ()
+saveDatabase tdb cdb = B.writeFile ".dibdb" $ Serialize.encode (databaseVersion, tdb, cdb)
 
 getTimestampDB :: BuildState -> TimestampDB
-getTimestampDB (BuildState _ db _) = db
+getTimestampDB (BuildState _ tdb _ _) = tdb
 
 putTimestampDB :: BuildState -> TimestampDB -> BuildState
-putTimestampDB (BuildState a _ t) db = BuildState a db t
+putTimestampDB (BuildState a _ c t) tdb = BuildState a tdb c t
+
+getChecksumDB :: BuildState -> ChecksumDB
+getChecksumDB (BuildState _ _ cdb _) = cdb
+
+putChecksumDB :: BuildState -> ChecksumDB -> BuildState
+putChecksumDB (BuildState a tdb _ t) cdb = BuildState a tdb cdb t
 
 getUpToDateTargets :: BuildState -> UpToDateTargets
-getUpToDateTargets (BuildState _ _ t) = t
+getUpToDateTargets (BuildState _ _ _ t) = t
 
 putUpToDateTargets :: BuildState -> UpToDateTargets -> BuildState
-putUpToDateTargets (BuildState a db _) = BuildState a db
+putUpToDateTargets (BuildState a tdb cdb _) = BuildState a tdb cdb
 
 getMaxBuildJobs :: BuildState -> Int
-getMaxBuildJobs (BuildState a _ _) = maxBuildJobs a
+getMaxBuildJobs (BuildState a _ _ _) = maxBuildJobs a
 
 -- | Returns whether or not a target is up to date, based on the current build state. 
 targetIsUpToDate :: BuildState -> Target -> Bool
-targetIsUpToDate (BuildState _ _ s) t = Set.member t s
+targetIsUpToDate (BuildState _ _ _ s) t = Set.member t s
 
 -- | Filters out up-to-date mappings
 filterMappings :: [SrcTransform] -> BuildM [SrcTransform]
-filterMappings files = get >>= \(BuildState _ db _) -> liftIO $ filterM (shouldBuildMapping db) files
+filterMappings files = get >>= \(BuildState _ tdb cdb _) -> liftIO $ filterM (shouldBuildMapping tdb cdb) files
 
 -- | Partitions out up-to-date mappings
 partitionMappings :: [SrcTransform] -> BuildM ([SrcTransform], [SrcTransform])
 partitionMappings files = do
   s <- get
-  shouldBuild <- liftIO $ mapM (shouldBuildMapping (getTimestampDB s)) files
+  shouldBuild <- liftIO $ mapM (shouldBuildMapping (getTimestampDB s) (getChecksumDB s)) files
   let paired = zip shouldBuild files
   let (a, b) = L.partition fst paired
   return $ ((map snd a), (map snd b))
@@ -96,11 +108,11 @@ partitionMappings files = do
 (<||>) = liftM2 (||)
 
 -- function for filtering FileMappings based on them already being taken care of
-shouldBuildMapping :: TimestampDB -> SrcTransform -> IO Bool
-shouldBuildMapping m (OneToOne s d) = hasSrcChanged m [s] <||> liftM not (D.doesFileExist $ T.unpack d)
-shouldBuildMapping m (OneToMany s ds) = hasSrcChanged m [s] <||> liftM (not.and) (mapM (D.doesFileExist.T.unpack) ds)
-shouldBuildMapping m (ManyToOne ss d) = hasSrcChanged m ss <||> liftM not (D.doesFileExist $ T.unpack d)
-shouldBuildMapping m (ManyToMany ss ds) = hasSrcChanged m ss <||> liftM (not.and) (mapM (D.doesFileExist.T.unpack) ds)
+shouldBuildMapping :: TimestampDB -> ChecksumDB -> SrcTransform -> IO Bool
+shouldBuildMapping t c (OneToOne s d) = hasSrcChanged t [s] <||> hasChecksumChanged c [s] [d] <||> liftM not (D.doesFileExist $ T.unpack d)
+shouldBuildMapping t c (OneToMany s ds) = hasSrcChanged t [s] <||> hasChecksumChanged c [s] ds  <||> liftM (not.and) (mapM (D.doesFileExist.T.unpack) ds)
+shouldBuildMapping t c (ManyToOne ss d) = hasSrcChanged t ss <||> hasChecksumChanged c ss [d]  <||> liftM not (D.doesFileExist $ T.unpack d)
+shouldBuildMapping t c (ManyToMany ss ds) = hasSrcChanged t ss <||> hasChecksumChanged c ss ds  <||> liftM (not.and) (mapM (D.doesFileExist.T.unpack) ds)
 
 hasSrcChanged :: TimestampDB -> [T.Text] -> IO Bool
 hasSrcChanged m f = let filesInMap = zip f $ map (flip Map.lookup m) f
@@ -114,6 +126,20 @@ getTimestamp f = do
   doesExist <- D.doesFileExist unpackedFileName
   if doesExist then D.getModificationTime unpackedFileName >>= extractSeconds else return 0
   where extractSeconds (Time.TOD s _) = return s
+
+hasChecksumChanged :: ChecksumDB -> [T.Text] -> [T.Text] -> IO Bool
+hasChecksumChanged cdb s d = do
+  let (key, cs) = getChecksumPair s d
+  let mapVal = Map.lookup key cdb
+  return $ compareChecksums mapVal cs
+  where compareChecksums (Just mcs) ccs = mcs /= ccs
+        compareChecksums Nothing _ = True
+
+getChecksumPair :: [T.Text] -> [T.Text] -> (T.Text, Word32)
+getChecksumPair s d =
+  let joinedSrc = T.concat $ L.intersperse ":" s
+      joinedDest = T.concat $ L.intersperse ":" d
+  in (joinedDest, Hash.calc_crc32 (T.unpack joinedSrc))
   
 buildFoldFunc :: Either [SrcTransform] T.Text -> Target -> BuildM (Either [SrcTransform] T.Text)
 buildFoldFunc (Left _) t = runTarget t
@@ -173,7 +199,7 @@ spawnStageThreads f m i a = do
   let numActive = L.length active
   let (toSpawn, theRest) = L.splitAt (m - numActive) i
   futures <- liftIO $ mapM future (map f toSpawn)
-  mapM_ (uncurry writeTimestamps) (map (\((Just res), (src, _)) -> (res, src)) done)
+  mapM_ (uncurry updateDatabase) (map (\((Just res), (src, _)) -> (res, src)) done)
   return (theRest, (zip toSpawn futures) ++ (map snd active), r)
 
 -- recursively spawns new tasks
@@ -210,19 +236,23 @@ processMappings (Stage _ t d _) m = do
   let transMap = t m --transform input-only mappings into input -> output mappings
   mapM d transMap
 
-writeTimestamps :: Either l r -> SrcTransform -> BuildM ()
-writeTimestamps (Right _) _ = return ()
-writeTimestamps (Left _) (OneToOne s _) = writeTimestampHelper $ [s]
-writeTimestamps (Left _) (OneToMany s _) = writeTimestampHelper $ [s]
-writeTimestamps (Left _) (ManyToOne ss _) = writeTimestampHelper $ ss
-writeTimestamps (Left _) (ManyToMany ss _) = writeTimestampHelper $ ss
+updateDatabase :: Either l r -> SrcTransform -> BuildM ()
+updateDatabase (Right _) _ = return ()
+updateDatabase (Left _) (OneToOne s d) = updateDatabaseHelper [s] [d]
+updateDatabase (Left _) (OneToMany s ds) = updateDatabaseHelper [s] ds
+updateDatabase (Left _) (ManyToOne ss d) = updateDatabaseHelper ss [d]
+updateDatabase (Left _) (ManyToMany ss ds) = updateDatabaseHelper ss ds
 
-writeTimestampHelper :: [T.Text] -> BuildM ()
-writeTimestampHelper files = do
+updateDatabaseHelper :: [T.Text] -> [T.Text] -> BuildM ()
+updateDatabaseHelper srcFiles destFiles = do
   buildstate <- get
-  let db = getTimestampDB buildstate
-  timestamps <- liftIO $ mapM getTimestamp files
-  let filteredResults = filter (\(_,y) -> y /= 0) $ zip files timestamps
-  let updatedDB = L.foldl' (\d (f, t) -> Map.insert f t d) db filteredResults
-  put $ putTimestampDB buildstate updatedDB
+  let tdb = getTimestampDB buildstate
+  timestamps <- liftIO $ mapM getTimestamp srcFiles
+  let filteredResults = filter (\(_,y) -> y /= 0) $ zip srcFiles timestamps
+  let updatedTDB = L.foldl' (\d (f, t) -> Map.insert f t d) tdb filteredResults
+  let cdb = getChecksumDB buildstate
+  let (key, cs) = getChecksumPair srcFiles destFiles
+  let updatedCDB = Map.insert key cs cdb
+  put $ putChecksumDB (putTimestampDB buildstate updatedTDB) updatedCDB
   return ()
+
