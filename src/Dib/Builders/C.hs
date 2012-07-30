@@ -27,26 +27,26 @@ data CTargetInfo = CTargetInfo {
 
 makeCTarget :: CTargetInfo -> Target
 makeCTarget info = 
-  let makeBuildString s t = (compiler info) ++ " " ++ (inFileOption info) ++ " " ++ (T.unpack s) ++ " " ++ (outFileOption info) ++ " " ++ (T.unpack t) ++ " " ++ (compileFlags info)
-      makeLinkString ss t = (compiler info) ++ " " ++ (concat $ intersperse " " (map T.unpack ss)) ++ " " ++ (outFileOption info) ++ " " ++ (T.unpack t) ++ " " ++ (linkFlags info)
+  let makeBuildString s t = compiler info ++ " " ++ inFileOption info ++ " " ++ T.unpack s ++ " " ++ outFileOption info ++ " " ++ T.unpack t ++ " " ++ compileFlags info
+      makeLinkString ss t = compiler info ++ " " ++ unwords (map T.unpack ss) ++ " " ++ outFileOption info ++ " " ++ T.unpack t ++ " " ++ linkFlags info
 
       buildCmd (ManyToOne ss t) = do
         let sourceFile = head ss
         let buildString = makeBuildString sourceFile t
-        putStrLn $ "Building: " ++ (T.unpack sourceFile)
-        exitCode <- system $ buildString
+        putStrLn $ "Building: " ++ T.unpack sourceFile
+        exitCode <- system buildString
         handleExitCode exitCode t buildString
       buildCmd _ = return $ Right "Unhandled SrcTransform."
 
       linkCmd (ManyToOne ss t) = do
         let linkString = makeLinkString ss t
-        putStrLn $ "Linking: " ++ (T.unpack t)
-        exitCode <- system $ linkString
+        putStrLn $ "Linking: " ++ T.unpack t
+        exitCode <- system linkString
         handleExitCode exitCode t linkString
       linkCmd _ = return $ Right "Unhandled SrcTransform."
 
       cppStage = Stage "compile" (map (changeExt "o")) (cDepScanner (includeDirs info)) buildCmd
-      linkStage = Stage "link" (combineTransforms (projectName info)) (\x -> return x) linkCmd
+      linkStage = Stage "link" (combineTransforms (projectName info)) return linkCmd
   in Target (projectName info) [] [cppStage, linkStage] [makeFileTreeGatherer (srcDir info) (matchExtensions [".cpp", ".c"])]
 
 changeExt :: T.Text -> SrcTransform -> SrcTransform
@@ -64,11 +64,11 @@ combineTransforms t st = [ManyToOne sources t]
 makeCleanTarget :: CTargetInfo -> Target
 makeCleanTarget info =
   let cleanCmd (OneToOne s _) = do
-        putStrLn $ "removing: " ++ (T.unpack s)
+        putStrLn $ "removing: " ++ T.unpack s
         D.removeFile (T.unpack s)
         return $ Left $ OneToOne "" ""
         
-      cleanStage = Stage "clean" (id) (\x -> return x) cleanCmd
+      cleanStage = Stage "clean" id return cleanCmd
       objectGatherer = makeFileTreeGatherer (srcDir info) (matchExtension ".o")
       programGatherer = makeSingleFileGatherer (projectName info)
   in Target "clean" [] [cleanStage] [objectGatherer, programGatherer]

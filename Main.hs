@@ -10,7 +10,7 @@ findDib :: FilePath -> [Char] -> IO ExitCode
 findDib lastPath args = do
     curPath <- D.getCurrentDirectory
     if curPath /= lastPath then
-        D.doesFileExist "dib.hs">>= \hasDib -> if hasDib then system ("runhaskell dib.hs " ++ args) else (D.setCurrentDirectory "../" >> findDib curPath args)
+        D.doesFileExist "dib.hs">>= \hasDib -> if hasDib then system ("runhaskell dib.hs" ++ args) else (D.setCurrentDirectory "../" >> findDib curPath args)
      else
         putStrLn "Error: can't find dib.hs." >> return (ExitFailure 255)
 

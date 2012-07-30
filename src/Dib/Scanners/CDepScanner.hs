@@ -26,7 +26,7 @@ getPathFromDep (Dependency _ path) = path
 
 --    already read includes, list of include paths
 data ParseState = PS {
-  currentDeps :: (S.Set Dependency),
+  currentDeps :: S.Set Dependency,
   searchPaths :: [String] }
   deriving (Show)
 
@@ -61,16 +61,16 @@ removeComments [] True False = error "Unterminated block comment."
 removeComments _ _ _ = error "Undefined condition encountered."
 
 filterBlank :: [String] -> [String]
-filterBlank = filter (\x -> x /= ['\n'] && x /= [])
+filterBlank = filter (\x -> x /= "\n" && x /= [])
 
 extractIncludes :: [String] -> [String]
-extractIncludes = filter (\x -> "#include" == (takeWhile (/= ' ') x))
+extractIncludes = filter (\x -> "#include" == takeWhile (/= ' ') x)
 
 dequoteInclude :: String -> String
 dequoteInclude s = 
   let endPortion = dropWhile (\x -> x /= '\"' && x /= '<') s
       endLen = length endPortion
-  in if endLen > 0 then takeWhile (\x -> x /= '\"' && x /= '>') $ tail $ endPortion else []
+  in if endLen > 0 then takeWhile (\x -> x /= '\"' && x /= '>') $ tail endPortion else []
 
 -- intial pass, removes comments and leading whitespace, then filters out extra lines
 pass1 :: String -> [String]
@@ -84,7 +84,7 @@ gatherDependencies :: String -> [String]
 gatherDependencies = pass2.pass1
 
 possibleFilenames :: FilePath -> [FilePath] -> [FilePath]
-possibleFilenames file searchPaths = map (\p -> F.normalise $ F.combine p file) searchPaths
+possibleFilenames file = map (\p -> F.normalise $ F.combine p file)
 
 pathToDependency :: FilePath -> Dependency
 pathToDependency path = Dependency (F.takeFileName path) path
@@ -97,7 +97,7 @@ spider file = do
     where
       includeFilter deps file = do
         exists <- liftIO $ Dir.doesFileExist file
-        return $ exists && (not $ S.member (pathToDependency file) deps)
+        return $ exists && not (S.member (pathToDependency file) deps)
 
 spiderHelper [] =  return ()
 spiderHelper (file:_) = do
@@ -116,8 +116,8 @@ spiderLauncher file = do
 
 getDepsForFile :: [FilePath] -> FilePath -> IO [T.Text]
 getDepsForFile includeDirs file = do
-  (_, s) <- runStateT (runDepGatherer $ spiderLauncher file) (PS {currentDeps=S.empty, searchPaths=[(F.dropFileName file), "."] ++ includeDirs })
-  return $ map (T.pack) $ map getPathFromDep $ S.toList (currentDeps s)
+  (_, s) <- runStateT (runDepGatherer $ spiderLauncher file) PS {currentDeps=S.empty, searchPaths=[F.dropFileName file, "."] ++ includeDirs }
+  return $ map (T.pack.getPathFromDep) (S.toList (currentDeps s))
 
 cDepScanner :: [FilePath] -> SrcTransform -> IO SrcTransform
 cDepScanner includeDirs (OneToOne i o) = getDepsForFile includeDirs (T.unpack i) >>= \d -> return $ ManyToOne (i:d) o

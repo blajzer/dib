@@ -66,12 +66,12 @@ filePathDeterminer :: FilePath -> IO (FilePath, Bool)
 filePathDeterminer f = D.doesDirectoryExist f >>= \d -> return (f, d)
 
 filePathFilter :: [FilePath] -> [FilePath]
-filePathFilter f = filter noSpecialOrHiddenDirs f
+filePathFilter = filter noSpecialOrHiddenDirs
     where noSpecialOrHiddenDirs (x:_) = x /= '.'
           noSpecialOrHiddenDirs [] = False
 
 directorySplitter :: [(FilePath, Bool)] -> ([FilePath], [FilePath])
-directorySplitter dC = foldl' splitter ([], []) dC
+directorySplitter = foldl' splitter ([], [])
     where splitter (d, f) (path, dir) = if dir then (d ++ [path], f) else (d, f ++ [path]) 
 
 fixFilePaths :: FilePath -> [FilePath] -> [FilePath]
@@ -92,4 +92,4 @@ matchExtension = T.isSuffixOf
 matchExtensions :: [T.Text] -> FilterFunc
 matchExtensions exts file = foldl' foldFunc False exts
   where foldFunc True _ = True
-        foldFunc False e = T.isSuffixOf e file
+        foldFunc False e = e `T.isSuffixOf` file

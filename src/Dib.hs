@@ -33,7 +33,7 @@ dib :: [Target] -> IO ()
 dib targets = do
   args <- Env.getArgs
   let buildArgs = parseArgs args targets
-  let selectedTarget = (buildTarget buildArgs)
+  let selectedTarget = buildTarget buildArgs
   let theTarget = L.find (\(Target name _ _ _) -> name == selectedTarget) targets
   if isNothing theTarget
     then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\"" else
@@ -46,7 +46,7 @@ dib targets = do
 parseArgs :: [String] -> [Target] -> BuildArgs
 parseArgs args targets =
   let argsLen = length args
-      target = if argsLen > 0 then (T.pack.head $ args) else (T.pack.show.head $ targets)
+      target = if argsLen > 0 then T.pack.head $ args else T.pack.show.head $ targets
   in BuildArgs { buildTarget = target, maxBuildJobs = 2 }
 
 printSeparator :: IO ()
@@ -101,7 +101,7 @@ partitionMappings files = do
   shouldBuild <- liftIO $ mapM (shouldBuildMapping (getTimestampDB s) (getChecksumDB s)) files
   let paired = zip shouldBuild files
   let (a, b) = L.partition fst paired
-  return $ ((map snd a), (map snd b))
+  return (map snd a, map snd b)
   
 
 (<||>) :: IO Bool -> IO Bool -> IO Bool
@@ -115,7 +115,7 @@ shouldBuildMapping t c (ManyToOne ss d) = hasSrcChanged t ss <||> hasChecksumCha
 shouldBuildMapping t c (ManyToMany ss ds) = hasSrcChanged t ss <||> hasChecksumChanged c ss ds  <||> liftM (not.and) (mapM (D.doesFileExist.T.unpack) ds)
 
 hasSrcChanged :: TimestampDB -> [T.Text] -> IO Bool
-hasSrcChanged m f = let filesInMap = zip f $ map (flip Map.lookup m) f
+hasSrcChanged m f = let filesInMap = zip f $ map (`Map.lookup` m) f
                         checkTimeStamps _ (_, Nothing) = return True
                         checkTimeStamps b (file, Just s) = getTimestamp file >>= (\t -> return $ b || (t /= s))
                     in foldM checkTimeStamps False filesInMap
@@ -152,13 +152,13 @@ isLeft _ = False
 runTarget :: Target -> BuildM (Either [SrcTransform] T.Text)
 runTarget t@(Target name deps _ _) = do
   buildState <- get
-  let outdatedTargets = filter (\x -> not $ targetIsUpToDate buildState x) deps
+  let outdatedTargets = filter (not.targetIsUpToDate buildState) deps
   depStatus <- foldM buildFoldFunc (Left []) outdatedTargets
   if isLeft depStatus then runTargetInternal t else buildFailFunc depStatus name
   
 buildFailFunc :: Either [SrcTransform] T.Text -> T.Text -> BuildM (Either [SrcTransform] T.Text)
 buildFailFunc (Right err) name = do
-  liftIO $ printSeparator
+  liftIO printSeparator
   liftIO $ putStr $ "ERROR: Error building target \"" ++ T.unpack name ++ "\": "
   liftIO $ putStrLn $ T.unpack err
   return $ Right ""
@@ -169,7 +169,7 @@ runTargetInternal t@(Target name _ stages gatherers) = do
   gatheredFiles <- liftIO $ runGatherers gatherers
   let srcTransforms = map (flip OneToOne "") gatheredFiles
   liftIO $ putStrLn $ "Building target \"" ++ T.unpack name ++ "\""
-  liftIO $ printSeparator
+  liftIO printSeparator
   stageResult <- foldM stageFoldFunc (Left srcTransforms) stages
   if isLeft stageResult then targetSuccessFunc t else buildFailFunc stageResult name
 
@@ -193,14 +193,14 @@ future thunk = do
 -- returns tuple of rest of input, active threads, and results
 spawnStageThreads :: (SrcTransform -> IO (Either l r)) -> Int -> [SrcTransform] -> [(SrcTransform, MVar (Either l r))] -> BuildM ([SrcTransform], [(SrcTransform, MVar (Either l r))], [Either l r])
 spawnStageThreads f m i a = do
-  results <- liftIO $ mapM tryTakeMVar (map snd a)
+  results <- liftIO $ mapM (tryTakeMVar.snd) a
   let r = map fromJust $ L.filter isJust results
   let (active, done) = L.partition (isNothing.fst) (zip results a)
   let numActive = L.length active
   let (toSpawn, theRest) = L.splitAt (m - numActive) i
-  futures <- liftIO $ mapM future (map f toSpawn)
-  mapM_ (uncurry updateDatabase) (map (\((Just res), (src, _)) -> (res, src)) done)
-  return (theRest, (zip toSpawn futures) ++ (map snd active), r)
+  futures <- liftIO $ mapM (future.f) toSpawn
+  mapM_ (uncurry updateDatabase.(\(Just res, (src, _)) -> (res, src))) done
+  return (theRest, zip toSpawn futures ++ map snd active, r)
 
 -- recursively spawns new tasks
 stageHelper :: (SrcTransform -> IO (Either a t)) -> Int -> [SrcTransform] -> [(SrcTransform, MVar (Either a t))] -> Either [a] t -> BuildM (Either [a] t)
@@ -208,21 +208,19 @@ stageHelper f m i a r = do
   let combine right@(Right _) _ = right
       combine (Left ml) (Left v) = Left (ml ++ [v])
       combine (Left _) (Right v) = Right v
-  if (L.length i) > 0  || (L.length a) > 0 then
-    do
+  if L.length i > 0  || L.length a > 0 then do
       (i', a', r') <- spawnStageThreads f m i a
       stageHelper f m i' a' (L.foldl' combine r r')
    else
-    do return r
+      return r
 
 runStage :: Stage -> [SrcTransform] -> BuildM (Either [SrcTransform] T.Text)
 runStage s@(Stage name _ _ f) m = do
-  liftIO $ putStrLn $ "--------------- Running stage \"" ++ (T.unpack name) ++ "\" ---------------"
+  liftIO $ putStrLn $ "--------------- Running stage \"" ++ T.unpack name ++ "\" ---------------"
   depScannedFiles <- liftIO $ processMappings s m
   (targetsToBuild, upToDateTargets) <- partitionMappings depScannedFiles
   bs <- get
-  results <- stageHelper f (getMaxBuildJobs bs) targetsToBuild [] (Left $ map transferUpToDateTarget upToDateTargets)
-  return results
+  stageHelper f (getMaxBuildJobs bs) targetsToBuild [] (Left $ map transferUpToDateTarget upToDateTargets)
 
 -- These might not be quite correct. I guessed at what made sense.
 transferUpToDateTarget :: SrcTransform -> SrcTransform
