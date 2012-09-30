@@ -25,6 +25,8 @@ import qualified System.Time as Time
 import Data.Maybe
 import Data.Word
 
+databaseFile :: String
+databaseFile = ".dib/dibdb"
 
 databaseVersion :: Integer
 databaseVersion = 1
@@ -56,14 +58,14 @@ runBuild :: BuildM a -> BuildState -> IO (a, BuildState)
 runBuild m = runStateT (runBuildImpl m)
 
 loadDatabase :: IO (TimestampDB, ChecksumDB)
-loadDatabase = do fileExists <- D.doesFileExist ".dibdb"
-                  fileContents <- if fileExists then B.readFile ".dibdb" else return B.empty
+loadDatabase = do fileExists <- D.doesFileExist databaseFile
+                  fileContents <- if fileExists then B.readFile databaseFile else return B.empty
                   return.handleEither $ Serialize.decode fileContents
                   where handleEither (Left _) = (Map.empty, Map.empty)
                         handleEither (Right (v, t, c)) = if v == databaseVersion then (t, c) else (Map.empty, Map.empty)
 
 saveDatabase :: TimestampDB -> ChecksumDB -> IO ()
-saveDatabase tdb cdb = B.writeFile ".dibdb" $ Serialize.encode (databaseVersion, tdb, cdb)
+saveDatabase tdb cdb = B.writeFile databaseFile $ Serialize.encode (databaseVersion, tdb, cdb)
 
 getTimestampDB :: BuildState -> TimestampDB
 getTimestampDB (BuildState _ tdb _ _) = tdb
