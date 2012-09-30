@@ -1,5 +1,5 @@
 module Dib.Builders.C (
-  CTargetInfo(CTargetInfo, projectName, srcDir, compiler, inFileOption, outFileOption, compileFlags, linkFlags, includeDirs),
+  CTargetInfo(CTargetInfo, projectName, srcDir, compiler, linker, inFileOption, outFileOption, compileFlags, linkFlags, includeDirs),
   makeCTarget,
   makeCleanTarget
   ) where
@@ -18,6 +18,7 @@ data CTargetInfo = CTargetInfo {
   projectName :: T.Text,
   srcDir :: T.Text,
   compiler :: String,
+  linker :: String,
   inFileOption :: String,
   outFileOption :: String,
   compileFlags :: String,
@@ -28,7 +29,7 @@ data CTargetInfo = CTargetInfo {
 makeCTarget :: CTargetInfo -> Target
 makeCTarget info = 
   let makeBuildString s t = compiler info ++ " " ++ inFileOption info ++ " " ++ T.unpack s ++ " " ++ outFileOption info ++ " " ++ T.unpack t ++ " " ++ compileFlags info
-      makeLinkString ss t = compiler info ++ " " ++ unwords (map T.unpack ss) ++ " " ++ outFileOption info ++ " " ++ T.unpack t ++ " " ++ linkFlags info
+      makeLinkString ss t = linker info ++ " " ++ unwords (map T.unpack ss) ++ " " ++ outFileOption info ++ " " ++ T.unpack t ++ " " ++ linkFlags info
 
       buildCmd (ManyToOne ss t) = do
         let sourceFile = head ss

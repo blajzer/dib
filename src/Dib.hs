@@ -178,6 +178,7 @@ targetSuccessFunc t@(Target name _ _ _) = do
   buildState <- get
   put $ putUpToDateTargets buildState $ Set.insert t $ getUpToDateTargets buildState
   liftIO $ putStrLn $ "Successfully built target \"" ++ T.unpack name ++ "\""
+  liftIO $ putStrLn ""
   return $ Left []
 
 stageFoldFunc :: Either [SrcTransform] T.Text -> Stage -> BuildM (Either [SrcTransform] T.Text)
