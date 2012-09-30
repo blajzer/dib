@@ -4,7 +4,6 @@ module Dib.Target(
   makePhonyTarget
   ) where
 
-import Dib.Stage
 import Dib.Types
 
 import qualified Data.Text as T
