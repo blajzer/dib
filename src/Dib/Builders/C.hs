@@ -68,9 +68,9 @@ makeCleanTarget info =
         putStrLn $ "removing: " ++ T.unpack s
         D.removeFile (T.unpack s)
         return $ Left $ OneToOne "" ""
-        
+  
       cleanStage = Stage "clean" id return cleanCmd
       objectGatherer = makeFileTreeGatherer (srcDir info) (matchExtension ".o")
       programGatherer = makeSingleFileGatherer (projectName info)
-  in Target "clean" [] [cleanStage] [objectGatherer, programGatherer]
+  in Target ("clean-" `T.append` (projectName info)) [] [cleanStage] [objectGatherer, programGatherer]
 
