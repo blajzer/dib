@@ -12,7 +12,7 @@ unixExe = ".dib/dib"
 windowsExe = ".dib/dib.exe"
 timestampFile = ".dib/timestamp"
 
-buildString = "ghc -o .dib/dib -O2 -outputdir .dib dib.hs"
+buildString = "ghc -o .dib/dib -O2 -XOverloadedStrings -outputdir .dib dib.hs"
 
 findDib :: FilePath -> [Char] -> IO ExitCode
 findDib lastPath args = do
@@ -58,10 +58,16 @@ getStoredCalTime = do
     else
       return ""
 
+processExitCode :: ExitCode -> IO ()
+processExitCode (ExitSuccess) = return ()
+processExitCode (ExitFailure n) = do
+  error $ "Error " ++ (show n) ++ " building dib.hs."
+
 rebuild :: Bool -> IO ()
 rebuild needToRebuild = do
   if needToRebuild then do
-      _ <- system buildString
+      exitCode <- system buildString
+      processExitCode exitCode
       calTimeStr <- getDibCalendarTimeStr
       tsFile <- openFile timestampFile WriteMode
       hPutStr tsFile calTimeStr
