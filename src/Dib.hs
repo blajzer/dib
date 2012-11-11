@@ -41,7 +41,7 @@ dib targets = do
     then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\"" else
     do
       (tdb, cdb) <- loadDatabase
-      (_, s) <- runBuild (runTarget $ fromJust theTarget) (BuildState buildArgs tdb cdb Set.empty)
+      (_, s) <- runBuild ((runTarget $ fromJust theTarget) >> writePendingDBUpdates) (BuildState buildArgs tdb cdb Set.empty [])
       saveDatabase (getTimestampDB s) (getChecksumDB s)
       return ()
 
@@ -68,33 +68,39 @@ saveDatabase :: TimestampDB -> ChecksumDB -> IO ()
 saveDatabase tdb cdb = B.writeFile databaseFile $ Serialize.encode (databaseVersion, tdb, cdb)
 
 getTimestampDB :: BuildState -> TimestampDB
-getTimestampDB (BuildState _ tdb _ _) = tdb
+getTimestampDB (BuildState _ tdb _ _ _) = tdb
 
 putTimestampDB :: BuildState -> TimestampDB -> BuildState
-putTimestampDB (BuildState a _ c t) tdb = BuildState a tdb c t
+putTimestampDB (BuildState a _ c t p) tdb = BuildState a tdb c t p
 
 getChecksumDB :: BuildState -> ChecksumDB
-getChecksumDB (BuildState _ _ cdb _) = cdb
+getChecksumDB (BuildState _ _ cdb _ _) = cdb
 
 putChecksumDB :: BuildState -> ChecksumDB -> BuildState
-putChecksumDB (BuildState a tdb _ t) cdb = BuildState a tdb cdb t
+putChecksumDB (BuildState a tdb _ t p) cdb = BuildState a tdb cdb t p
 
 getUpToDateTargets :: BuildState -> UpToDateTargets
-getUpToDateTargets (BuildState _ _ _ t) = t
+getUpToDateTargets (BuildState _ _ _ t _) = t
 
 putUpToDateTargets :: BuildState -> UpToDateTargets -> BuildState
-putUpToDateTargets (BuildState a tdb cdb _) = BuildState a tdb cdb
+putUpToDateTargets (BuildState a tdb cdb _ p) t = BuildState a tdb cdb t p
+
+getPendingDBUpdates :: BuildState -> PendingDBUpdates
+getPendingDBUpdates (BuildState _ _ _ _ p) = p
+
+putPendingDBUpdates :: BuildState -> PendingDBUpdates -> BuildState
+putPendingDBUpdates (BuildState a tdb cdb t _) p = BuildState a tdb cdb t p
 
 getMaxBuildJobs :: BuildState -> Int
-getMaxBuildJobs (BuildState a _ _ _) = maxBuildJobs a
+getMaxBuildJobs (BuildState a _ _ _ _) = maxBuildJobs a
 
 -- | Returns whether or not a target is up to date, based on the current build state. 
 targetIsUpToDate :: BuildState -> Target -> Bool
-targetIsUpToDate (BuildState _ _ _ s) t = Set.member t s
+targetIsUpToDate (BuildState _ _ _ s _) t = Set.member t s
 
 -- | Filters out up-to-date mappings
 filterMappings :: [SrcTransform] -> BuildM [SrcTransform]
-filterMappings files = get >>= \(BuildState _ tdb cdb _) -> liftIO $ filterM (shouldBuildMapping tdb cdb) files
+filterMappings files = get >>= \(BuildState _ tdb cdb _ _) -> liftIO $ filterM (shouldBuildMapping tdb cdb) files
 
 -- | Partitions out up-to-date mappings
 partitionMappings :: [SrcTransform] -> BuildM ([SrcTransform], [SrcTransform])
@@ -247,13 +253,21 @@ updateDatabase (Left _) (ManyToMany ss ds) = updateDatabaseHelper ss ds
 updateDatabaseHelper :: [T.Text] -> [T.Text] -> BuildM ()
 updateDatabaseHelper srcFiles destFiles = do
   buildstate <- get
-  let tdb = getTimestampDB buildstate
+  let pdbu = getPendingDBUpdates buildstate
   timestamps <- liftIO $ mapM getTimestamp srcFiles
   let filteredResults = filter (\(_,y) -> y /= 0) $ zip srcFiles timestamps
-  let updatedTDB = L.foldl' (\d (f, t) -> Map.insert f t d) tdb filteredResults
+  let updatedPDBU = pdbu ++ filteredResults
   let cdb = getChecksumDB buildstate
   let (key, cs) = getChecksumPair srcFiles destFiles
   let updatedCDB = Map.insert key cs cdb
-  put $ putChecksumDB (putTimestampDB buildstate updatedTDB) updatedCDB
+  put $ putChecksumDB (putPendingDBUpdates buildstate updatedPDBU) updatedCDB
   return ()
 
+writePendingDBUpdates :: BuildM ()
+writePendingDBUpdates = do
+  buildstate <- get
+  let tdb = getTimestampDB buildstate
+  let pdbu = getPendingDBUpdates buildstate
+  let updatedTDB = L.foldl' (\d (f, t) -> Map.insert f t d) tdb pdbu
+  put $ putPendingDBUpdates (putTimestampDB buildstate updatedTDB) []
+  return ()
