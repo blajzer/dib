@@ -13,12 +13,13 @@ import Dib.Types
 import Control.Concurrent
 import Control.Monad.State as S
 import qualified Data.ByteString as B
-import qualified Data.Hash.CRC32.GZip as Hash
+import qualified Data.Digest.CRC32 as Hash
 import qualified Data.List as L
 import qualified Data.Map as Map
 import qualified Data.Serialize as Serialize
 import qualified Data.Set as Set
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import qualified System.Directory as D
 import qualified System.Environment as Env
 import qualified System.Time as Time
@@ -147,7 +148,7 @@ getChecksumPair :: [T.Text] -> [T.Text] -> (T.Text, Word32)
 getChecksumPair s d =
   let joinedSrc = T.concat $ L.intersperse ":" s
       joinedDest = T.concat $ L.intersperse ":" d
-  in (joinedDest, Hash.calc_crc32 (T.unpack joinedSrc))
+  in (joinedDest, Hash.crc32 (TE.encodeUtf8 joinedSrc))
   
 buildFoldFunc :: Either [SrcTransform] T.Text -> Target -> BuildM (Either [SrcTransform] T.Text)
 buildFoldFunc (Left _) t = runTarget t
