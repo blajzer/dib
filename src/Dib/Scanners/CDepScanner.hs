@@ -40,12 +40,6 @@ removeCR = filter (/= '\r')
 removeLeadingWS :: String -> String
 removeLeadingWS = dropWhile (\x -> x == ' ' || x == '\t')
 
-removeTrailingWS :: String -> String
-removeTrailingWS = reverse.removeLeadingWS.reverse
-
-trimWS :: String -> String
-trimWS = removeLeadingWS.removeTrailingWS
-
 -- input string -> block comment -> line comment -> output string
 removeComments :: String -> Bool -> Bool -> String
 removeComments ('/':'*':xs) False False = removeComments xs True False
@@ -95,9 +89,9 @@ spider file = do
   spiderHelper paths
   return ()
     where
-      includeFilter deps file = do
-        exists <- liftIO $ Dir.doesFileExist file
-        return $ exists && not (S.member (pathToDependency file) deps)
+      includeFilter deps f = do
+        exists <- liftIO $ Dir.doesFileExist f
+        return $ exists && not (S.member (pathToDependency f) deps)
 
 spiderHelper [] =  return ()
 spiderHelper (file:_) = do

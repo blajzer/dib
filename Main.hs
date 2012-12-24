@@ -8,10 +8,16 @@ import System.Environment (getArgs)
 import System.IO
 import System.Time as T
 
+unixExe :: String
 unixExe = ".dib/dib"
+
+windowsExe :: String
 windowsExe = ".dib/dib.exe"
+
+timestampFile :: String
 timestampFile = ".dib/timestamp"
 
+buildString :: String
 buildString = "ghc -o .dib/dib -O2 -XOverloadedStrings -outputdir .dib dib.hs"
 
 findDib :: FilePath -> [Char] -> IO ExitCode

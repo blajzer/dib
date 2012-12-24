@@ -68,6 +68,7 @@ makeCleanTarget info =
         putStrLn $ "removing: " ++ T.unpack s
         D.removeFile (T.unpack s)
         return $ Left $ OneToOne "" ""
+      cleanCmd _ = error "Should never hit this."
   
       cleanStage = Stage "clean" id return cleanCmd
       objectGatherer = makeFileTreeGatherer (srcDir info) (matchExtension ".o")
