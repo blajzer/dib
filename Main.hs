@@ -18,7 +18,7 @@ timestampFile :: String
 timestampFile = ".dib/timestamp"
 
 buildString :: String
-buildString = "ghc -o .dib/dib -O2 -XOverloadedStrings -outputdir .dib dib.hs"
+buildString = "ghc -o .dib/dib -O2 -XOverloadedStrings -rtsopts -threaded -outputdir .dib dib.hs"
 
 findDib :: FilePath -> [Char] -> IO ExitCode
 findDib lastPath args = do
@@ -86,7 +86,7 @@ buildAndRunDib args = do
   ensureDibDirExists
   needToRebuild <- checkDibTimestamps
   rebuild needToRebuild
-  system $ ".dib/dib " ++ args
+  system $ ".dib/dib +RTS -N -RTS " ++ args
 
 main :: IO ExitCode
 main = do
