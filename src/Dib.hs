@@ -20,6 +20,7 @@ import qualified Data.Serialize as Serialize
 import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
+import qualified GHC.Conc as GHC
 import qualified System.Directory as D
 import qualified System.Environment as Env
 import qualified System.Time as Time
@@ -35,7 +36,8 @@ databaseVersion = 1
 dib :: [Target] -> IO ()
 dib targets = do
   args <- Env.getArgs
-  let buildArgs = parseArgs args targets
+  numProcs <- GHC.getNumProcessors
+  let buildArgs = parseArgs args targets numProcs
   let selectedTarget = buildTarget buildArgs
   let theTarget = L.find (\(Target name _ _ _) -> name == selectedTarget) targets
   if isNothing theTarget
@@ -46,11 +48,11 @@ dib targets = do
       saveDatabase (getTimestampDB s) (getChecksumDB s)
       return ()
 
-parseArgs :: [String] -> [Target] -> BuildArgs
-parseArgs args targets =
+parseArgs :: [String] -> [Target] -> Int -> BuildArgs
+parseArgs args targets numJobs =
   let argsLen = length args
       target = if argsLen > 0 then T.pack.head $ args else T.pack.show.head $ targets
-  in BuildArgs { buildTarget = target, maxBuildJobs = 2 }
+  in BuildArgs { buildTarget = target, maxBuildJobs = numJobs }
 
 printSeparator :: IO ()
 printSeparator = putStrLn "============================================================"
