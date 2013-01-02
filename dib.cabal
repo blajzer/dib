@@ -1,5 +1,5 @@
 name:           dib
-version:        0.2.1
+version:        0.3.0
 cabal-version:  >= 1.4
 build-type:     Simple
 license:        MIT

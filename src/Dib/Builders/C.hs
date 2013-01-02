@@ -23,7 +23,9 @@ data CTargetInfo = CTargetInfo {
   outFileOption :: String,
   compileFlags :: String,
   linkFlags :: String,
-  includeDirs :: [String]
+  includeDirs :: [String],
+  extraCompileDeps :: [T.Text],
+  extraLinkDeps :: [T.Text]
   }
 
 makeCTarget :: CTargetInfo -> Target
@@ -46,8 +48,8 @@ makeCTarget info =
         handleExitCode exitCode t linkString
       linkCmd _ = return $ Right "Unhandled SrcTransform."
 
-      cppStage = Stage "compile" (map (changeExt "o")) (cDepScanner (includeDirs info)) buildCmd
-      linkStage = Stage "link" (combineTransforms (projectName info)) return linkCmd
+      cppStage = Stage "compile" (map (changeExt "o")) (cDepScanner (includeDirs info) (extraCompileDeps info)) buildCmd
+      linkStage = Stage "link" (combineTransforms (projectName info) (extraLinkDeps info)) return linkCmd
   in Target (projectName info) [] [cppStage, linkStage] [makeFileTreeGatherer (srcDir info) (matchExtensions [".cpp", ".c"])]
 
 changeExt :: T.Text -> SrcTransform -> SrcTransform
@@ -58,8 +60,8 @@ handleExitCode :: ExitCode -> T.Text -> String -> IO (Either SrcTransform T.Text
 handleExitCode (ExitSuccess) t _ = return $ Left $ OneToOne t ""
 handleExitCode (ExitFailure _) _ e = return $ Right $ T.pack (show e)
 
-combineTransforms :: T.Text -> [SrcTransform] -> [SrcTransform]
-combineTransforms t st = [ManyToOne sources t]
+combineTransforms :: T.Text -> [T.Text] -> [SrcTransform] -> [SrcTransform]
+combineTransforms t extraDeps st = [ManyToOne (sources ++ extraDeps) t]
   where sources = foldl' (\l (OneToOne s _) -> l ++ [s]) [] st
 
 makeCleanTarget :: CTargetInfo -> Target
