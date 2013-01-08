@@ -81,6 +81,14 @@ rebuild needToRebuild = do
     else
       return ()
 
+requoteArg :: String -> String
+requoteArg arg = requoteArgInternal arg False
+  where
+    requoteArgInternal ('=':xs) False = '=' : '\"' : requoteArgInternal xs True
+    requoteArgInternal [] True = '\"':[]
+    requoteArgInternal [] False = []
+    requoteArgInternal (x:xs) e = x : requoteArgInternal xs e
+
 buildAndRunDib :: [Char] -> IO ExitCode
 buildAndRunDib args = do
   ensureDibDirExists
@@ -92,6 +100,6 @@ main :: IO ExitCode
 main = do
     args <- getArgs
     currentDir <- D.getCurrentDirectory
-    exitcode <- findDib "" (intercalate "" args)
+    exitcode <- findDib "" (intercalate "" $ map requoteArg args)
     D.setCurrentDirectory currentDir
     return exitcode

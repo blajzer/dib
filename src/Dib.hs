@@ -5,7 +5,9 @@ module Dib (
   filterMappings,
   getTimestampDB,
   putTimestampDB,
-  targetIsUpToDate
+  targetIsUpToDate,
+  getVarDict,
+  addEnvToDict
   ) where
 
 import Dib.Gatherers
@@ -47,6 +49,23 @@ dib targets = do
       (_, s) <- runBuild ((runTarget $ fromJust theTarget) >> writePendingDBUpdates) (BuildState buildArgs tdb cdb Set.empty [])
       saveDatabase (getTimestampDB s) (getChecksumDB s)
       return ()
+
+extractVarsFromArgs :: [String] -> Map.Map String String
+extractVarsFromArgs args = L.foldl' extractVarsFromArgsInternal Map.empty $ map (L.break (== '=')) args
+  where
+    extractVarsFromArgsInternal e (_, []) = e
+    extractVarsFromArgsInternal e (a, _:bs) = Map.insert a bs e
+
+getVarDict :: IO (Map.Map String String)
+getVarDict = do
+  args <- Env.getArgs
+  return $ extractVarsFromArgs args
+
+addEnvToDict :: Map.Map String String -> [(String, String)] -> IO (Map.Map String String)
+addEnvToDict m vars = do
+  env <- Env.getEnvironment
+  let valuesToAdd = map (\(x, y) -> (x, fromMaybe y $ L.lookup x env)) vars  
+  return $ L.foldl' (\a (x, y) -> Map.insert x y a) m valuesToAdd
 
 parseArgs :: [String] -> [Target] -> Int -> BuildArgs
 parseArgs args targets numJobs =
