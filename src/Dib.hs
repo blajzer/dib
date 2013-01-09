@@ -7,7 +7,8 @@ module Dib (
   putTimestampDB,
   targetIsUpToDate,
   getVarDict,
-  addEnvToDict
+  addEnvToDict,
+  makeArgDictLookupFunc
   ) where
 
 import Dib.Gatherers
@@ -50,18 +51,18 @@ dib targets = do
       saveDatabase (getTimestampDB s) (getChecksumDB s)
       return ()
 
-extractVarsFromArgs :: [String] -> Map.Map String String
+extractVarsFromArgs :: [String] -> ArgDict
 extractVarsFromArgs args = L.foldl' extractVarsFromArgsInternal Map.empty $ map (L.break (== '=')) args
   where
     extractVarsFromArgsInternal e (_, []) = e
     extractVarsFromArgsInternal e (a, _:bs) = Map.insert a bs e
 
-getVarDict :: IO (Map.Map String String)
+getVarDict :: IO ArgDict
 getVarDict = do
   args <- Env.getArgs
   return $ extractVarsFromArgs args
 
-addEnvToDict :: Map.Map String String -> [(String, String)] -> IO (Map.Map String String)
+addEnvToDict :: ArgDict -> [(String, String)] -> IO ArgDict
 addEnvToDict m vars = do
   env <- Env.getEnvironment
   let valuesToAdd = map (\(x, y) -> (x, fromMaybe y $ L.lookup x env)) vars  
@@ -72,6 +73,9 @@ parseArgs args targets numJobs =
   let argsLen = length args
       target = if argsLen > 0 then T.pack.head $ args else T.pack.show.head $ targets
   in BuildArgs { buildTarget = target, maxBuildJobs = numJobs }
+
+makeArgDictLookupFunc :: ArgDict -> String -> String -> String
+makeArgDictLookupFunc dict arg defVal = fromMaybe defVal $ Map.lookup arg dict
 
 printSeparator :: IO ()
 printSeparator = putStrLn "============================================================"

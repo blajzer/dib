@@ -12,6 +12,7 @@ type TimestampDB = Map.Map T.Text Integer
 type ChecksumDB = Map.Map T.Text Word32
 type UpToDateTargets = Set.Set Target
 type PendingDBUpdates = [(T.Text, Integer)]
+type ArgDict = Map.Map String String
 
 data BuildState = BuildState BuildArgs TimestampDB ChecksumDB UpToDateTargets PendingDBUpdates
 
