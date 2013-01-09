@@ -6,7 +6,7 @@ module Dib (
   getTimestampDB,
   putTimestampDB,
   targetIsUpToDate,
-  getVarDict,
+  getArgDict,
   addEnvToDict,
   makeArgDictLookupFunc
   ) where
@@ -57,8 +57,8 @@ extractVarsFromArgs args = L.foldl' extractVarsFromArgsInternal Map.empty $ map 
     extractVarsFromArgsInternal e (_, []) = e
     extractVarsFromArgsInternal e (a, _:bs) = Map.insert a bs e
 
-getVarDict :: IO ArgDict
-getVarDict = do
+getArgDict :: IO ArgDict
+getArgDict = do
   args <- Env.getArgs
   return $ extractVarsFromArgs args
 
