@@ -42,8 +42,8 @@ massageFilePath p = T.replace "\\" "_" $ T.replace "/" "_" p
 
 remapObjFile :: BuildLocation -> T.Text -> T.Text
 remapObjFile InPlace f = f
-remapObjFile (BuildDir d) f = d `T.snoc` F.pathSeparator `T.append` (massageFilePath f)
-remapObjFile (ObjAndBinDirs d _) f = d `T.snoc` F.pathSeparator `T.append` (massageFilePath f) 
+remapObjFile (BuildDir d) f = d `T.snoc` F.pathSeparator `T.append` massageFilePath f
+remapObjFile (ObjAndBinDirs d _) f = d `T.snoc` F.pathSeparator `T.append` massageFilePath f 
 
 remapBinFile :: BuildLocation -> T.Text -> T.Text
 remapBinFile InPlace f = f
@@ -78,7 +78,7 @@ makeCTarget info =
         handleExitCode exitCode t linkString
       linkCmd _ = return $ Right "Unhandled SrcTransform."
 
-      buildDirTarget = makeCommandTarget ("buildDirs-" `T.append` (projectName info)) [] $ makeBuildDirs info
+      buildDirTarget = makeCommandTarget ("buildDirs-" `T.append` projectName info) [] $ makeBuildDirs info
       cppStage = Stage "compile" (map (changeExt "o" (outputLocation info))) (cDepScanner (includeDirs info) (extraCompileDeps info)) buildCmd
       linkStage = Stage "link" (combineTransforms (remapBinFile (outputLocation info) $ projectName info) (extraLinkDeps info)) return linkCmd
   in Target (projectName info) [buildDirTarget] [cppStage, linkStage] [makeFileTreeGatherer (srcDir info) (matchExtensions [".cpp", ".c"])]
@@ -114,5 +114,5 @@ makeCleanTarget info =
       cleanStage = Stage "clean" id return cleanCmd
       objectGatherer = makeFileTreeGatherer (objDir $ outputLocation info) (matchExtension ".o")
       programGatherer = makeSingleFileGatherer (programFile $ outputLocation info)
-  in Target ("clean-" `T.append` (projectName info)) [] [cleanStage] [objectGatherer, programGatherer]
+  in Target ("clean-" `T.append` projectName info) [] [cleanStage] [objectGatherer, programGatherer]
 

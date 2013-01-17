@@ -20,6 +20,6 @@ addDependencies (Target name deps stages gatherers) newDeps = Target name (newDe
 makePhonyTarget :: T.Text -> [Target] -> Target
 makePhonyTarget name deps = Target name deps [] []
 
-makeCommandTarget :: T.Text -> [Target] -> (IO ()) -> Target
+makeCommandTarget :: T.Text -> [Target] -> IO () -> Target
 makeCommandTarget name deps command = Target name deps [] [makeCommandGatherer command]
 

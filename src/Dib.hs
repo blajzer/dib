@@ -47,7 +47,7 @@ dib targets = do
     then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\"" else
     do
       (tdb, cdb) <- loadDatabase
-      (_, s) <- runBuild ((runTarget $ fromJust theTarget) >> writePendingDBUpdates) (BuildState buildArgs tdb cdb Set.empty [])
+      (_, s) <- runBuild (runTarget (fromJust theTarget) >> writePendingDBUpdates) (BuildState buildArgs tdb cdb Set.empty [])
       saveDatabase (getTimestampDB s) (getChecksumDB s)
       return ()
 
@@ -115,7 +115,7 @@ getPendingDBUpdates :: BuildState -> PendingDBUpdates
 getPendingDBUpdates (BuildState _ _ _ _ p) = p
 
 putPendingDBUpdates :: BuildState -> PendingDBUpdates -> BuildState
-putPendingDBUpdates (BuildState a tdb cdb t _) p = BuildState a tdb cdb t p
+putPendingDBUpdates (BuildState a tdb cdb t _) = BuildState a tdb cdb t
 
 getMaxBuildJobs :: BuildState -> Int
 getMaxBuildJobs (BuildState a _ _ _ _) = maxBuildJobs a
@@ -243,7 +243,7 @@ stageHelper f m i a r = do
   let combine right@(Right _) _ = right
       combine (Left ml) (Left v) = Left (ml ++ [v])
       combine (Left _) (Right v) = Right v
-  if L.length i > 0  || L.length a > 0 then do
+  if not (null i) || not (null a) then do
       (i', a', r') <- spawnStageThreads f m i a
       stageHelper f m i' a' (L.foldl' combine r r')
    else

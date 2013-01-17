@@ -49,13 +49,13 @@ makeDirectoryGatherer d = wrapGatherStrategy.DirectoryGatherer d
 makeFileTreeGatherer :: T.Text -> FilterFunc -> Gatherer
 makeFileTreeGatherer d = wrapGatherStrategy.FileTreeGatherer d
 
-makeCommandGatherer :: (IO ()) -> Gatherer
+makeCommandGatherer :: IO () -> Gatherer
 makeCommandGatherer = wrapGatherStrategy.CommandGatherer
 
 singleFileGatherFunc :: SingleFileGatherer -> IO [T.Text]
 singleFileGatherFunc (SingleFileGatherer f) = do
   exists <- D.doesFileExist $ T.unpack f
-  if exists then return [f] else return []
+  return [f | exists]
 
 directoryGathererFunc :: DirectoryGatherer -> IO [T.Text]
 directoryGathererFunc (DirectoryGatherer d f) = do
