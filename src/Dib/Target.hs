@@ -2,10 +2,12 @@ module Dib.Target(
   Target(Target),
   addDependency,
   addDependencies,
-  makePhonyTarget
+  makePhonyTarget,
+  makeCommandTarget
   ) where
 
 import Dib.Types
+import Dib.Gatherers
 
 import qualified Data.Text as T
 
@@ -17,4 +19,7 @@ addDependencies (Target name deps stages gatherers) newDeps = Target name (newDe
 
 makePhonyTarget :: T.Text -> [Target] -> Target
 makePhonyTarget name deps = Target name deps [] []
+
+makeCommandTarget :: T.Text -> [Target] -> (IO ()) -> Target
+makeCommandTarget name deps command = Target name deps [] [makeCommandGatherer command]
 

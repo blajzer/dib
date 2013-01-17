@@ -4,11 +4,13 @@ module Dib.Gatherers(
   DirectoryGatherer(),
   FileTreeGatherer(),
   Gatherer(),
+  CommandGatherer(),
   wrapGatherStrategy,
   runGatherers,
   makeSingleFileGatherer,
   makeDirectoryGatherer,
   makeFileTreeGatherer,
+  makeCommandGatherer,
   matchExtension,
   matchExtensions
   )where
@@ -28,6 +30,9 @@ instance GatherStrategy DirectoryGatherer where
 
 instance GatherStrategy FileTreeGatherer where
   gather = fileTreeGatherFunc
+  
+instance GatherStrategy CommandGatherer where
+  gather = commandGatherFunc
 
 runGatherers :: [Gatherer] -> IO [T.Text]
 runGatherers gs = mapM (\(Gatherer s) -> gather s) gs >>= \x -> foldM (\a b -> return (a ++ b)) [] x
@@ -43,6 +48,9 @@ makeDirectoryGatherer d = wrapGatherStrategy.DirectoryGatherer d
 
 makeFileTreeGatherer :: T.Text -> FilterFunc -> Gatherer
 makeFileTreeGatherer d = wrapGatherStrategy.FileTreeGatherer d
+
+makeCommandGatherer :: (IO ()) -> Gatherer
+makeCommandGatherer = wrapGatherStrategy.CommandGatherer
 
 singleFileGatherFunc :: SingleFileGatherer -> IO [T.Text]
 singleFileGatherFunc (SingleFileGatherer f) = do
@@ -61,6 +69,11 @@ fileTreeGatherFunc :: FileTreeGatherer -> IO [T.Text]
 fileTreeGatherFunc (FileTreeGatherer d f) = do
   files <- rGetFilesInDir $ T.unpack d
   return $ filter f $ map T.pack files
+
+commandGatherFunc :: CommandGatherer -> IO [T.Text]
+commandGatherFunc (CommandGatherer f) = do
+  f
+  return []
 
 -- functions to handle recursively spidering a directory
 filePathDeterminer :: FilePath -> IO (FilePath, Bool)

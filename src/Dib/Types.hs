@@ -63,6 +63,8 @@ data SingleFileGatherer = SingleFileGatherer T.Text
 data DirectoryGatherer = DirectoryGatherer T.Text FilterFunc
 data FileTreeGatherer = FileTreeGatherer T.Text FilterFunc
 
+data CommandGatherer = CommandGatherer (IO ())
+
 instance Serialize.Serialize T.Text where
   put s = Serialize.putListOf Serialize.put $ T.unpack s
   get = liftM T.pack $ Serialize.getListOf Serialize.get
