@@ -2,6 +2,7 @@ module Main where
 
 import Data.List (intercalate)
 import GHC.IO.Exception
+import Control.Monad
 import System.Cmd (system)
 import qualified System.Directory as D
 import System.Environment (getArgs)
@@ -20,21 +21,13 @@ timestampFile = ".dib/timestamp"
 buildString :: String
 buildString = "ghc -o .dib/dib -O2 -XOverloadedStrings -rtsopts -threaded -outputdir .dib dib.hs"
 
-findDib :: FilePath -> [Char] -> IO ExitCode
+findDib :: FilePath -> String -> IO ExitCode
 findDib lastPath args = do
     curPath <- D.getCurrentDirectory
     if curPath /= lastPath then
-        D.doesFileExist "dib.hs" >>= \hasDib -> if hasDib then buildAndRunDib args else (D.setCurrentDirectory "../" >> findDib curPath args)
+        D.doesFileExist "dib.hs" >>= \hasDib -> if hasDib then buildAndRunDib args else D.setCurrentDirectory "../" >> findDib curPath args
      else
         putStrLn "Error: can't find dib.hs." >> return (ExitFailure 255)
-
-ensureDibDirExists :: IO ()
-ensureDibDirExists = do
-  dibDirExists <- D.doesDirectoryExist ".dib"
-  if dibDirExists then
-      return ()
-    else
-      D.createDirectory ".dib"
 
 getDibCalendarTimeStr :: IO String
 getDibCalendarTimeStr = do
@@ -66,32 +59,29 @@ getStoredCalTime = do
 
 processExitCode :: ExitCode -> IO ()
 processExitCode (ExitSuccess) = return ()
-processExitCode (ExitFailure n) = do
-  error $ "Error " ++ (show n) ++ " building dib.hs."
+processExitCode (ExitFailure n) = error $ "Error " ++ show n ++ " building dib.hs."
 
 rebuild :: Bool -> IO ()
-rebuild needToRebuild = do
-  if needToRebuild then do
-      exitCode <- system buildString
+rebuild needToRebuild =
+  when needToRebuild $
+   do exitCode <- system buildString
       processExitCode exitCode
       calTimeStr <- getDibCalendarTimeStr
       tsFile <- openFile timestampFile WriteMode
       hPutStr tsFile calTimeStr
       hClose tsFile
-    else
-      return ()
 
 requoteArg :: String -> String
 requoteArg arg = requoteArgInternal arg False
   where
     requoteArgInternal ('=':xs) False = '=' : '\"' : requoteArgInternal xs True
-    requoteArgInternal [] True = '\"':[]
+    requoteArgInternal [] True = "\""
     requoteArgInternal [] False = []
     requoteArgInternal (x:xs) e = x : requoteArgInternal xs e
 
-buildAndRunDib :: [Char] -> IO ExitCode
+buildAndRunDib :: String -> IO ExitCode
 buildAndRunDib args = do
-  ensureDibDirExists
+  D.createDirectoryIfMissing False ".dib"
   needToRebuild <- checkDibTimestamps
   rebuild needToRebuild
   system $ ".dib/dib +RTS -N -RTS " ++ args
