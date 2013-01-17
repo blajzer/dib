@@ -7,7 +7,6 @@ module Dib.Builders.C (
   ) where
 
 import Dib.Gatherers
-import Dib.Target
 import Dib.Types
 import Dib.Scanners.CDepScanner
 
@@ -78,10 +77,10 @@ makeCTarget info =
         handleExitCode exitCode t linkString
       linkCmd _ = return $ Right "Unhandled SrcTransform."
 
-      buildDirTarget = makeCommandTarget ("buildDirs-" `T.append` projectName info) [] $ makeBuildDirs info
+      buildDirGatherer = makeCommandGatherer $ makeBuildDirs info
       cppStage = Stage "compile" (map (changeExt "o" (outputLocation info))) (cDepScanner (includeDirs info) (extraCompileDeps info)) buildCmd
       linkStage = Stage "link" (combineTransforms (remapBinFile (outputLocation info) $ projectName info) (extraLinkDeps info)) return linkCmd
-  in Target (projectName info) [buildDirTarget] [cppStage, linkStage] [makeFileTreeGatherer (srcDir info) (matchExtensions [".cpp", ".c"])]
+  in Target (projectName info) [] [cppStage, linkStage] [buildDirGatherer, makeFileTreeGatherer (srcDir info) (matchExtensions [".cpp", ".c"])]
 
 changeExt :: T.Text -> BuildLocation -> SrcTransform -> SrcTransform
 changeExt newExt b (OneToOne l _) = OneToOne l $ remapObjFile b $ T.append (T.dropWhileEnd (/='.') l) newExt
