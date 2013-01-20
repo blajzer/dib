@@ -11,6 +11,7 @@ module Dib.Gatherers(
   makeDirectoryGatherer,
   makeFileTreeGatherer,
   makeCommandGatherer,
+  matchAll,
   matchExtension,
   matchExtensions
   )where
@@ -99,6 +100,9 @@ rGetFilesInDir dir = do
     let (dirs, files) = directorySplitter filtContents
     spideredDirs <- mapM rGetFilesInDir dirs
     return $ concat spideredDirs ++ files
+
+matchAll :: FilterFunc
+matchAll _ = True
 
 matchExtension :: T.Text -> FilterFunc
 matchExtension = T.isSuffixOf
