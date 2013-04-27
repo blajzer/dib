@@ -10,7 +10,7 @@ library
   build-depends:   base >= 4.4, text, containers, mtl, directory, old-time, process, filepath, cereal, bytestring, digest
   ghc-options:     -Wall -O2
   hs-source-dirs:  src
-  exposed-modules: Dib, Dib.Gatherers, Dib.Stage, Dib.Target, Dib.Types, Dib.Scanners.CDepScanner, Dib.Builders.C, Dib.Builders.Copy, Dib.Util
+  exposed-modules: Dib, Dib.Gatherers, Dib.Stage, Dib.Target, Dib.Types, Dib.Scanners.CDepScanner, Dib.Builders.C, Dib.Builders.Copy, Dib.Builders.Simple, Dib.Util
   extensions:      OverloadedStrings
 
 executable dib
