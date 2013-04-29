@@ -3,7 +3,11 @@ module Dib.Builders.C (
   BuildLocation(InPlace, BuildDir, ObjAndBinDirs),
   makeCTarget,
   makeCleanTarget,
-  makeBuildDirs
+  makeBuildDirs,
+  emptyConfig,
+  defaultGCCConfig,
+  defaultGXXConfig,
+  defaultClangConfig
   ) where
 
 import Dib.Gatherers
@@ -35,6 +39,42 @@ data CTargetInfo = CTargetInfo {
 data BuildLocation = InPlace
                    | BuildDir T.Text
                    | ObjAndBinDirs T.Text T.Text
+
+emptyConfig :: CTargetInfo
+emptyConfig = CTargetInfo {
+  projectName = "",
+  srcDir = "",
+  outputLocation = InPlace,
+  compiler = "",
+  linker = "",
+  inFileOption = "",
+  outFileOption = "",
+  compileFlags = "",
+  linkFlags = "",
+  includeDirs = [],
+  extraCompileDeps = [],
+  extraLinkDeps = []
+  }
+
+defaultGCCConfig :: CTargetInfo
+defaultGCCConfig = emptyConfig {
+  compiler = "gcc",
+  linker = "gcc",
+  inFileOption = "-c",
+  outFileOption = "-o"
+  }
+
+defaultGXXConfig :: CTargetInfo
+defaultGXXConfig = defaultGCCConfig {
+  compiler = "g++",
+  linker = "g++"
+  }
+
+defaultClangConfig :: CTargetInfo
+defaultClangConfig = defaultGCCConfig {
+  compiler = "clang",
+  linker = "clang"
+  }
 
 massageFilePath :: T.Text -> T.Text
 massageFilePath p = T.replace "\\" "_" $ T.replace "/" "_" p
