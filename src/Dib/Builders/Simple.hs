@@ -15,7 +15,7 @@ buildFunc :: (String -> String -> String) -> SrcTransform -> IO (Either SrcTrans
 buildFunc func (OneToOne s t) = do
   let unpackedTarget = T.unpack t
   let unpackedSource = T.unpack s
-  D.createDirectoryIfMissing True $ takeDirectory $ unpackedTarget
+  D.createDirectoryIfMissing True $ takeDirectory unpackedTarget
   putStrLn $ "Building: " ++ unpackedSource ++ " -> " ++ unpackedTarget
   let buildCmd = func unpackedSource unpackedTarget
   exitCode <- system buildCmd
@@ -23,11 +23,11 @@ buildFunc func (OneToOne s t) = do
 buildFunc _ _ = return $ Right "Unexpected SrcTransform"
 
 remapFile :: String -> String -> T.Text -> SrcTransform -> SrcTransform
-remapFile src dest ext (OneToOne s _) = OneToOne s $ T.pack $ dest </> (makeRelative src (T.unpack (changeExt s ext)))
+remapFile src dest ext (OneToOne s _) = OneToOne s $ T.pack $ dest </> makeRelative src (T.unpack (changeExt s ext))
 remapFile _ _ _ _ = error "Unhandled SrcTransform"
 
 changeExt :: T.Text -> T.Text -> T.Text
-changeExt path newExt = T.append (T.dropWhileEnd (/='.') path) newExt
+changeExt path = T.append (T.dropWhileEnd (/='.') path)
 
 --TODO: move to a utility module and factor out of C builder
 handleExitCode :: ExitCode -> T.Text -> String -> IO (Either SrcTransform T.Text)

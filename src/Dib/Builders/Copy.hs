@@ -13,14 +13,14 @@ copyFunc :: SrcTransform -> IO (Either SrcTransform T.Text)
 copyFunc (OneToOne s t) = do
   let unpackedTarget = T.unpack t
   let unpackedSource = T.unpack s
-  D.createDirectoryIfMissing True $ takeDirectory $ unpackedTarget
+  D.createDirectoryIfMissing True $ takeDirectory unpackedTarget
   putStrLn $ "Copying: " ++ unpackedSource ++ " -> " ++ unpackedTarget
   D.copyFile unpackedSource unpackedTarget
   return $ Left (OneToOne t "")
 copyFunc _ = return $ Right "Unexpected SrcTransform"
 
 remapFile :: String -> String -> SrcTransform -> SrcTransform
-remapFile src dest (OneToOne s _) = OneToOne s $ T.pack $ dest </> (makeRelative src (T.unpack s))
+remapFile src dest (OneToOne s _) = OneToOne s $ T.pack $ dest </> makeRelative src $ T.unpack s
 remapFile _ _ _ = error "Unhandled SrcTransform"
 
 makeCopyTarget :: T.Text -> T.Text -> T.Text -> FilterFunc -> Target
