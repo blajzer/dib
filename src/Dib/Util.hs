@@ -1,3 +1,4 @@
+-- | Module containing utility functions and common functionality.
 module Dib.Util (
   getSubDirectories
   ) where
@@ -5,6 +6,7 @@ module Dib.Util (
 import Control.Monad
 import qualified System.Directory as D
 
+-- | Given a directory, returns the list of subdirectories.
 getSubDirectories :: FilePath -> IO [FilePath]
 getSubDirectories root = do
   contents <- D.getDirectoryContents root

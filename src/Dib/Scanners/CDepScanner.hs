@@ -1,4 +1,6 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, ExistentialQuantification, KindSignatures, FlexibleContexts #-}
+-- | C dependency scanner. Runs a stripped-down pre-processor to scan for
+-- include files (recursively).
 module Dib.Scanners.CDepScanner (
   cDepScanner
   ) where
@@ -83,6 +85,7 @@ possibleFilenames file = map (\p -> F.normalise $ F.combine p file)
 pathToDependency :: FilePath -> Dependency
 pathToDependency path = Dependency (F.takeFileName path) path
 
+spider :: forall (m :: * -> *).(MonadIO m, MonadState ParseState m) => String -> m ()
 spider file = do
   s <- get
   paths <- filterM (includeFilter $ currentDeps s) $ possibleFilenames file (searchPaths s) 
@@ -93,6 +96,7 @@ spider file = do
         exists <- liftIO $ Dir.doesFileExist f
         return $ exists && not (S.member (pathToDependency f) deps)
 
+spiderHelper :: forall (m :: * -> *).(MonadIO m, MonadState ParseState m) => [FilePath] -> m ()
 spiderHelper [] =  return ()
 spiderHelper (file:_) = do
   c <- liftIO $ readFile file
@@ -102,6 +106,7 @@ spiderHelper (file:_) = do
   mapM_ spider deps
   return ()
 
+spiderLauncher :: forall (m :: * -> *).(MonadIO m, MonadState ParseState m) => FilePath -> m ()
 spiderLauncher file = do
   c <- liftIO $ readFile file
   let deps = gatherDependencies c
@@ -113,6 +118,9 @@ getDepsForFile includeDirs file = do
   (_, s) <- runStateT (runDepGatherer $ spiderLauncher file) PS {currentDeps=S.empty, searchPaths=[F.dropFileName file, "."] ++ includeDirs }
   return $ map (T.pack.getPathFromDep) (S.toList (currentDeps s))
 
+-- | Takes in a list of include directories, extra dependencies, a 'SrcTransform',
+-- and returns a new 'SrcTransform' with the dependencies injected into the source
+-- side.
 cDepScanner :: [FilePath] -> [T.Text] -> SrcTransform -> IO SrcTransform
 cDepScanner includeDirs extraDeps (OneToOne i o) = getDepsForFile includeDirs (T.unpack i) >>= \d -> return $ ManyToOne (i:(d ++ extraDeps)) o
 cDepScanner includeDirs extraDeps (OneToMany i o) = getDepsForFile includeDirs (T.unpack i) >>= \d -> return $ ManyToMany (i:(d ++ extraDeps)) o

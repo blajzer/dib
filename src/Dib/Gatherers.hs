@@ -1,4 +1,6 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+-- | Module that exposes all of the various 'GatherStrategy' types and functions
+-- for dealing with them.
 module Dib.Gatherers(
   SingleFileGatherer(),
   DirectoryGatherer(),
@@ -35,21 +37,29 @@ instance GatherStrategy FileTreeGatherer where
 instance GatherStrategy CommandGatherer where
   gather = commandGatherFunc
 
+-- | Runs a list of 'Gatherer's and returns the concatenation of their output.
 runGatherers :: [Gatherer] -> IO [T.Text]
 runGatherers gs = mapM (\(Gatherer s) -> gather s) gs >>= \x -> foldM (\a b -> return (a ++ b)) [] x
 
+-- | Convenience function to turn a 'GatherStrategy' into a 'Gatherer'.
 wrapGatherStrategy :: GatherStrategy s => s -> Gatherer
 wrapGatherStrategy = Gatherer
 
+-- | Constructs a 'Gatherer' that returns a single file.
 makeSingleFileGatherer :: T.Text -> Gatherer
 makeSingleFileGatherer = wrapGatherStrategy.SingleFileGatherer
 
+-- | Constructs a 'Gatherer' that returns all files in a directory (but not its
+-- subdirectories) that match a given filter.
 makeDirectoryGatherer :: T.Text -> FilterFunc -> Gatherer
 makeDirectoryGatherer d = wrapGatherStrategy.DirectoryGatherer d
 
+-- | Constructs a 'Gatherer' that returns all files in a directory tree that
+-- match a given filter.
 makeFileTreeGatherer :: T.Text -> FilterFunc -> Gatherer
 makeFileTreeGatherer d = wrapGatherStrategy.FileTreeGatherer d
 
+-- | Constructs a 'Gatherer' that runs an arbitrary 'IO' action.
 makeCommandGatherer :: IO () -> Gatherer
 makeCommandGatherer = wrapGatherStrategy.CommandGatherer
 
@@ -101,12 +111,15 @@ rGetFilesInDir dir = do
     spideredDirs <- mapM rGetFilesInDir dirs
     return $ concat spideredDirs ++ files
 
+-- | Filter function that returns all files.
 matchAll :: FilterFunc
 matchAll _ = True
 
+-- | Filter function that returns files with a given extension.
 matchExtension :: T.Text -> FilterFunc
 matchExtension = T.isSuffixOf
 
+-- | Filter function that returns files that match any of a list of extensions.
 matchExtensions :: [T.Text] -> FilterFunc
 matchExtensions exts file = foldl' foldFunc False exts
   where foldFunc True _ = True

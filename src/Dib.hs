@@ -1,3 +1,4 @@
+-- | TODO: talk about the point of the project and give some examples.
 module Dib (
   SrcTransform(OneToOne, OneToMany, ManyToOne, ManyToMany),
   BuildState,
@@ -36,6 +37,8 @@ databaseFile = ".dib/dibdb"
 databaseVersion :: Integer
 databaseVersion = 1
 
+-- | The function that should be called to dispatch the build. Takes a list
+-- of 'Target's.
 dib :: [Target] -> IO ()
 dib targets = do
   args <- Env.getArgs
@@ -57,11 +60,14 @@ extractVarsFromArgs args = L.foldl' extractVarsFromArgsInternal Map.empty $ map 
     extractVarsFromArgsInternal e (_, []) = e
     extractVarsFromArgsInternal e (a, _:bs) = Map.insert a bs e
 
+-- | Returns the argument dictionary.
 getArgDict :: IO ArgDict
 getArgDict = do
   args <- Env.getArgs
   return $ extractVarsFromArgs args
 
+-- | Adds all of the variables in the execution environment into the
+-- argument dictionary. Allows for make-like variable passing.
 addEnvToDict :: ArgDict -> [(String, String)] -> IO ArgDict
 addEnvToDict m vars = do
   env <- Env.getEnvironment
@@ -74,8 +80,10 @@ parseArgs args targets numJobs =
       target = if argsLen > 0 then T.pack.head $ args else T.pack.show.head $ targets
   in BuildArgs { buildTarget = target, maxBuildJobs = numJobs }
 
-makeArgDictLookupFunc :: ArgDict -> String -> String -> String
-makeArgDictLookupFunc dict arg defVal = fromMaybe defVal $ Map.lookup arg dict
+-- | Makes a function that can be used to look up a value in the argument
+-- dictionary, returning a default value if the argument does not exist.
+makeArgDictLookupFunc :: String -> String -> ArgDict -> String
+makeArgDictLookupFunc arg defVal dict = fromMaybe defVal $ Map.lookup arg dict
 
 printSeparator :: IO ()
 printSeparator = putStrLn "============================================================"
@@ -93,9 +101,11 @@ loadDatabase = do fileExists <- D.doesFileExist databaseFile
 saveDatabase :: TimestampDB -> ChecksumDB -> IO ()
 saveDatabase tdb cdb = B.writeFile databaseFile $ Serialize.encode (databaseVersion, tdb, cdb)
 
+-- | Returns the 'TimestampDB' from the 'BuildState'
 getTimestampDB :: BuildState -> TimestampDB
 getTimestampDB (BuildState _ tdb _ _ _) = tdb
 
+-- | Puts the 'TimestampDB' back into the 'BuildState'
 putTimestampDB :: BuildState -> TimestampDB -> BuildState
 putTimestampDB (BuildState a _ c t p) tdb = BuildState a tdb c t p
 

@@ -1,3 +1,4 @@
+-- | A trivial builder that copies a directory tree from one location to another.
 module Dib.Builders.Copy (
   makeCopyTarget
   ) where
@@ -20,9 +21,11 @@ copyFunc (OneToOne s t) = do
 copyFunc _ = return $ Right "Unexpected SrcTransform"
 
 remapFile :: String -> String -> SrcTransform -> SrcTransform
-remapFile src dest (OneToOne s _) = OneToOne s $ T.pack $ dest </> makeRelative src $ T.unpack s
+remapFile src dest (OneToOne s _) = OneToOne s $ T.pack $ dest </> makeRelative src (T.unpack s)
 remapFile _ _ _ = error "Unhandled SrcTransform"
 
+-- | The 'makeCopyTarget' function makes a target that copies a directory tree.
+-- It takes a name, a source directory, destination directory, and gather filter.
 makeCopyTarget :: T.Text -> T.Text -> T.Text -> FilterFunc -> Target
 makeCopyTarget name src dest f =
   let stage = Stage "copy" (map $ remapFile (T.unpack src) (T.unpack dest)) return copyFunc 

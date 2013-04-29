@@ -1,3 +1,5 @@
+-- | Module exposing the 'Stage' type and related type wrappers, along with a
+-- convenience 'emptyStage'.
 module Dib.Stage(
   Stage(Stage),
   InputTransformer,
@@ -8,5 +10,6 @@ module Dib.Stage(
 
 import Dib.Types
 
+-- | A stage that does nothing and just passes the 'SrcTransform's through.
 emptyStage :: Stage
 emptyStage = Stage "empty" id return (return.Left)
