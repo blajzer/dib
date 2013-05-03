@@ -1,3 +1,6 @@
+-- | This is the command-line executable "dib". Since Dib proper is a
+-- library, one doesn't need this, but it makes dealing with build
+-- scripts quite a bit easier.
 module Main where
 
 import Data.List (intercalate)
@@ -15,12 +18,50 @@ unixExe = ".dib/dib"
 windowsExe :: String
 windowsExe = ".dib/dib.exe"
 
+-- | The file that stores the timestamp for dib.hs
 timestampFile :: String
 timestampFile = ".dib/timestamp"
 
+-- | The command line for building dib.hs
 buildString :: String
 buildString = "ghc -o .dib/dib -O2 -XOverloadedStrings -rtsopts -threaded -outputdir .dib dib.hs"
 
+-- | A basic dib script. This is the script saved when running "dib init"
+defaultScript :: String
+defaultScript = "\
+  \module Main where\n\n\
+  \import Dib\n\
+  \import qualified Data.Text as T\n\n\
+  \targets = []\n\n\
+  \main = dib targets\n"
+
+compilerToConfig :: String -> String
+compilerToConfig "gcc" = "defaultGCCConfig"
+compilerToConfig "g++" = "defaultGXXConfig"
+compilerToConfig "clang" = "defaultClangConfig"
+compilerToConfig _ = undefined
+
+-- | Makes a C Builder. Takes a name and source directory.
+cBuilderScript :: String -> String -> String -> String
+cBuilderScript name compiler srcDir = "\
+  \module Main where\n\n\
+  \import Dib\n\
+  \import Dib.Builders.C\n\
+  \import qualified Data.Text as T\n\n"
+  ++ "projectInfo = " ++ (compilerToConfig compiler) ++ " {\n"
+  ++ "  projectName = \"" ++ name ++ "\",\n"
+  ++ "  srcDir = \"" ++ srcDir ++ "\",\n"
+  ++ "  compileFlags = \"\",\n"
+  ++ "  linkFlags = \"\",\n"
+  ++ "  includeDirs = [\"" ++ srcDir ++ "\"]\n"
+  ++ "}\n\n"
+  ++ "project = makeCTarget projectInfo\n\
+  \clean = makeCleanTarget projectInfo\n\n\
+  \targets = [project, clean]\n\n\
+  \main = dib targets"
+
+-- | Recurses up the file path until it finds a directory with a dib.hs in it
+-- Once it finds a dib.hs, it builds and runs it.
 findDib :: FilePath -> String -> IO ExitCode
 findDib lastPath args = do
     curPath <- D.getCurrentDirectory
@@ -86,10 +127,36 @@ buildAndRunDib args = do
   rebuild needToRebuild
   system $ ".dib/dib +RTS -N -RTS " ++ args
 
+shouldHandleInit :: [String] -> Bool
+shouldHandleInit args = (length args) >= 1 && (head args) == "--init"	
+
+argsToBuildScript :: [String] -> String
+argsToBuildScript ["c", name, compiler, srcDir] = cBuilderScript name compiler srcDir
+argsToBuildScript ["empty"] = defaultScript
+argsToBuildScript [] = defaultScript
+argsToBuildScript _ = error "Error: Unknown template name."
+
+handleInit :: [String] -> IO Bool
+handleInit args = do
+  if shouldHandleInit args then do
+      scriptExists <- D.doesFileExist "dib.hs"
+      if not scriptExists then do
+          let buildScript = argsToBuildScript $ tail args
+          putStrLn "Initializing dib.hs..."
+          withFile "dib.hs" WriteMode (\h -> hPutStr h buildScript >> return True) 
+        else do
+          error "Error: dib.hs already exists"
+    else
+      return False
+
 main :: IO ExitCode
 main = do
     args <- getArgs
-    currentDir <- D.getCurrentDirectory
-    exitcode <- findDib "" (intercalate "" $ map requoteArg args)
-    D.setCurrentDirectory currentDir
-    return exitcode
+    inited <- handleInit args
+    if inited then
+        return ExitSuccess 
+      else do
+        currentDir <- D.getCurrentDirectory
+        exitcode <- findDib "" (intercalate "" $ map requoteArg args)
+        D.setCurrentDirectory currentDir
+        return exitcode
