@@ -12,4 +12,4 @@ import Dib.Types
 
 -- | A stage that does nothing and just passes the 'SrcTransform's through.
 emptyStage :: Stage
-emptyStage = Stage "empty" id return (return.Left)
+emptyStage = Stage "empty" id return [] (return.Left)

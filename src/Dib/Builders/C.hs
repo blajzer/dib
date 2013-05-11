@@ -146,8 +146,8 @@ makeCTarget info =
       linkCmd _ = return $ Right "Unhandled SrcTransform."
 
       buildDirGatherer = makeCommandGatherer $ makeBuildDirs info
-      cppStage = Stage "compile" (map (changeExt "o" (outputLocation info))) (cDepScanner (includeDirs info) (extraCompileDeps info)) buildCmd
-      linkStage = Stage "link" (combineTransforms (remapBinFile (outputLocation info) $ projectName info) (extraLinkDeps info)) return linkCmd
+      cppStage = Stage "compile" (map (changeExt "o" (outputLocation info))) (cDepScanner (includeDirs info)) (extraCompileDeps info) buildCmd
+      linkStage = Stage "link" (combineTransforms (remapBinFile (outputLocation info) $ projectName info)) return (extraLinkDeps info) linkCmd
   in Target (projectName info) [] [cppStage, linkStage] [buildDirGatherer, makeFileTreeGatherer (srcDir info) (matchExtensions [".cpp", ".c"])]
 
 changeExt :: T.Text -> BuildLocation -> SrcTransform -> SrcTransform
@@ -158,8 +158,8 @@ handleExitCode :: ExitCode -> T.Text -> String -> IO (Either SrcTransform T.Text
 handleExitCode (ExitSuccess) t _ = return $ Left $ OneToOne t ""
 handleExitCode (ExitFailure _) _ e = return $ Right $ T.pack (show e)
 
-combineTransforms :: T.Text -> [T.Text] -> [SrcTransform] -> [SrcTransform]
-combineTransforms t extraDeps st = [ManyToOne (sources ++ extraDeps) t]
+combineTransforms :: T.Text -> [SrcTransform] -> [SrcTransform]
+combineTransforms t st = [ManyToOne sources t]
   where sources = foldl' (\l (OneToOne s _) -> l ++ [s]) [] st
 
 -- | Given a 'CTargetInfo', produces a 'Target' that will clean the project.
@@ -179,7 +179,7 @@ makeCleanTarget info =
       programFile (BuildDir d) = d `T.snoc` F.pathSeparator `T.append` projectName info
       programFile (ObjAndBinDirs _ d) = d `T.snoc` F.pathSeparator `T.append` projectName info
   
-      cleanStage = Stage "clean" id return cleanCmd
+      cleanStage = Stage "clean" id return [] cleanCmd
       objectGatherer = makeFileTreeGatherer (objDir $ outputLocation info) (matchExtension ".o")
       programGatherer = makeSingleFileGatherer (programFile $ outputLocation info)
   in Target ("clean-" `T.append` projectName info) [] [cleanStage] [objectGatherer, programGatherer]

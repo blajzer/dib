@@ -121,8 +121,8 @@ getDepsForFile includeDirs file = do
 -- | Takes in a list of include directories, extra dependencies, a 'SrcTransform',
 -- and returns a new 'SrcTransform' with the dependencies injected into the source
 -- side.
-cDepScanner :: [FilePath] -> [T.Text] -> SrcTransform -> IO SrcTransform
-cDepScanner includeDirs extraDeps (OneToOne i o) = getDepsForFile includeDirs (T.unpack i) >>= \d -> return $ ManyToOne (i:(d ++ extraDeps)) o
-cDepScanner includeDirs extraDeps (OneToMany i o) = getDepsForFile includeDirs (T.unpack i) >>= \d -> return $ ManyToMany (i:(d ++ extraDeps)) o
-cDepScanner _ _ _ = error "Unimplemented. Implement this if it is a valid relationship."
+cDepScanner :: [FilePath] -> SrcTransform -> IO SrcTransform
+cDepScanner includeDirs (OneToOne i o) = getDepsForFile includeDirs (T.unpack i) >>= \d -> return $ ManyToOne (i:d) o
+cDepScanner includeDirs (OneToMany i o) = getDepsForFile includeDirs (T.unpack i) >>= \d -> return $ ManyToMany (i:d) o
+cDepScanner _ _ = error "Unimplemented. Implement this if it is a valid relationship."
 

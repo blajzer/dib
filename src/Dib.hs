@@ -139,13 +139,17 @@ filterMappings :: [SrcTransform] -> BuildM [SrcTransform]
 filterMappings files = get >>= \(BuildState _ tdb cdb _ _) -> liftIO $ filterM (shouldBuildMapping tdb cdb) files
 
 -- | Partitions out up-to-date mappings
-partitionMappings :: [SrcTransform] -> BuildM ([SrcTransform], [SrcTransform])
-partitionMappings files = do
+partitionMappings :: [SrcTransform] -> [T.Text] -> BuildM ([SrcTransform], [SrcTransform])
+partitionMappings files extraDeps = do
   s <- get
-  shouldBuild <- liftIO $ mapM (shouldBuildMapping (getTimestampDB s) (getChecksumDB s)) files
-  let paired = zip shouldBuild files
-  let (a, b) = L.partition fst paired
-  return (map snd a, map snd b)
+  extraDepsChanged <- liftIO $ hasSrcChanged (getTimestampDB s) extraDeps
+  if extraDepsChanged then do
+      return (files, [])
+    else do
+      shouldBuild <- liftIO $ mapM (shouldBuildMapping (getTimestampDB s) (getChecksumDB s)) files
+      let paired = zip shouldBuild files
+      let (a, b) = L.partition fst paired
+      return (map snd a, map snd b)
   
 
 (<||>) :: IO Bool -> IO Bool -> IO Bool
@@ -260,12 +264,13 @@ stageHelper f m i a r = do
       return r
 
 runStage :: Stage -> [SrcTransform] -> BuildM (Either [SrcTransform] T.Text)
-runStage s@(Stage name _ _ f) m = do
+runStage s@(Stage name _ _ extraDeps f) m = do
   liftIO $ putStrLn $ "--------------- Running stage \"" ++ T.unpack name ++ "\" ---------------"
   depScannedFiles <- liftIO $ processMappings s m
-  (targetsToBuild, upToDateTargets) <- partitionMappings depScannedFiles
+  (targetsToBuild, upToDateTargets) <- partitionMappings depScannedFiles extraDeps
   bs <- get
-  stageHelper f (getMaxBuildJobs bs) targetsToBuild [] (Left $ map transferUpToDateTarget upToDateTargets)
+  result <- stageHelper f (getMaxBuildJobs bs) targetsToBuild [] (Left $ map transferUpToDateTarget upToDateTargets)
+  updateDatabaseExtraDeps result extraDeps
 
 -- These might not be quite correct. I guessed at what made sense.
 transferUpToDateTarget :: SrcTransform -> SrcTransform
@@ -275,7 +280,7 @@ transferUpToDateTarget (ManyToOne _ d) = OneToOne d ""
 transferUpToDateTarget (ManyToMany _ ds) = ManyToOne ds ""
 
 processMappings :: Stage -> [SrcTransform] -> IO [SrcTransform]
-processMappings (Stage _ t d _) m = do
+processMappings (Stage _ t d _ _) m = do
   let transMap = t m --transform input-only mappings into input -> output mappings
   mapM d transMap
 
@@ -298,6 +303,17 @@ updateDatabaseHelper srcFiles destFiles = do
   let updatedCDB = Map.insert key cs cdb
   put $ putChecksumDB (putPendingDBUpdates buildstate updatedPDBU) updatedCDB
   return ()
+
+updateDatabaseExtraDeps :: (Either [SrcTransform] T.Text) -> [T.Text] -> BuildM (Either [SrcTransform] T.Text)
+updateDatabaseExtraDeps result@(Right _) _ = return result
+updateDatabaseExtraDeps result@(Left _) deps = do
+  buildstate <- get
+  let pdbu = getPendingDBUpdates buildstate
+  timestamps <- liftIO $ mapM getTimestamp deps
+  let filteredResults = filter (\(_,y) -> y /= 0) $ zip deps timestamps
+  let updatedPDBU = pdbu ++ filteredResults
+  put $ putPendingDBUpdates buildstate updatedPDBU
+  return result
 
 writePendingDBUpdates :: BuildM ()
 writePendingDBUpdates = do

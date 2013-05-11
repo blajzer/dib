@@ -26,7 +26,7 @@ remapFile _ _ _ = error "Unhandled SrcTransform"
 
 -- | The 'makeCopyTarget' function makes a target that copies a directory tree.
 -- It takes a name, a source directory, destination directory, and gather filter.
-makeCopyTarget :: T.Text -> T.Text -> T.Text -> FilterFunc -> Target
-makeCopyTarget name src dest f =
-  let stage = Stage "copy" (map $ remapFile (T.unpack src) (T.unpack dest)) return copyFunc 
+makeCopyTarget :: T.Text -> T.Text -> T.Text -> FilterFunc -> [T.Text] -> Target
+makeCopyTarget name src dest f extraDeps =
+  let stage = Stage "copy" (map $ remapFile (T.unpack src) (T.unpack dest)) return extraDeps copyFunc 
   in Target name [] [stage] [makeFileTreeGatherer src f]

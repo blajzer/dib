@@ -66,8 +66,8 @@ type DepScanner = (SrcTransform -> IO SrcTransform)
 type StageFunc = (SrcTransform -> IO (Either SrcTransform T.Text))
 
 -- | Type describing a build stage.
--- Takes a name, an 'InputTransformer', 'DepScanner', and the builder function.
-data Stage = Stage T.Text InputTransformer DepScanner StageFunc
+-- Takes a name, an 'InputTransformer', 'DepScanner', additional dependencies, and the builder function.
+data Stage = Stage T.Text InputTransformer DepScanner [T.Text] StageFunc
 
 -- | Describes a build target.
 -- Takes a name, list of dependencies, listof 'Stage's, and a list of 'Gatherer's.
@@ -77,7 +77,7 @@ instance Show Target where
   show (Target t _ _ _) = T.unpack t
 
 instance Eq Stage where
-  (==) (Stage n _ _ _) (Stage n2 _ _ _) = n Prelude.== n2
+  (==) (Stage n _ _ _ _) (Stage n2 _ _ _ _) = n Prelude.== n2
 
 instance Eq Target where
   (==) (Target n _ _ _) (Target n2 _ _ _) = n Prelude.== n2

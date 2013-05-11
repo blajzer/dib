@@ -40,7 +40,7 @@ handleExitCode (ExitFailure _) _ e = return $ Right $ T.pack (show e)
 -- | The 'makeSimpleTarget' function generates a target.
 -- It takes a name, source directory, destination directory, destination extension,
 -- gather filter, and a function to build the command line.
-makeSimpleTarget :: T.Text -> T.Text -> T.Text -> T.Text -> FilterFunc -> (String -> String -> String) -> Target
-makeSimpleTarget name src dest ext f buildCmdBuilder =
-  let stage = Stage name (map $ remapFile (T.unpack src) (T.unpack dest) ext) return (buildFunc buildCmdBuilder)
+makeSimpleTarget :: T.Text -> T.Text -> T.Text -> T.Text -> FilterFunc -> [T.Text] -> (String -> String -> String) -> Target
+makeSimpleTarget name src dest ext f extraDeps buildCmdBuilder =
+  let stage = Stage name (map $ remapFile (T.unpack src) (T.unpack dest) ext) return extraDeps (buildFunc buildCmdBuilder)
   in Target name [] [stage] [makeFileTreeGatherer src f]
