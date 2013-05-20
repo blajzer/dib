@@ -9,6 +9,7 @@ import Control.Monad
 import System.Cmd (system)
 import qualified System.Directory as D
 import System.Environment (getArgs)
+import System.Info
 import System.IO
 import System.Time as T
 
@@ -18,13 +19,21 @@ unixExe = ".dib/dib"
 windowsExe :: String
 windowsExe = ".dib/dib.exe"
 
+correctExe :: String
+correctExe = if os == "mingw32" then windowsExe else unixExe
+
+-- | Location to copy the dib.hs script to and rename it. Get around
+-- an issue with building on Windows.
+tmpDibScript :: String
+tmpDibScript = ".dib/dib-tmp.hs"
+
 -- | The file that stores the timestamp for dib.hs
 timestampFile :: String
 timestampFile = ".dib/timestamp"
 
 -- | The command line for building dib.hs
 buildString :: String
-buildString = "ghc -o .dib/dib -O2 -XOverloadedStrings -rtsopts -threaded -outputdir .dib dib.hs"
+buildString = "ghc -o " ++ correctExe ++ " -O2 -XOverloadedStrings -rtsopts -threaded -outputdir .dib " ++ tmpDibScript
 
 -- | A basic dib script. This is the script saved when running "dib init"
 defaultScript :: String
@@ -105,7 +114,8 @@ processExitCode (ExitFailure n) = error $ "Error " ++ show n ++ " building dib.h
 rebuild :: Bool -> IO ()
 rebuild needToRebuild =
   when needToRebuild $
-   do exitCode <- system buildString
+   do D.copyFile "dib.hs" tmpDibScript
+      exitCode <- system buildString
       processExitCode exitCode
       calTimeStr <- getDibCalendarTimeStr
       tsFile <- openFile timestampFile WriteMode
@@ -125,7 +135,7 @@ buildAndRunDib args = do
   D.createDirectoryIfMissing False ".dib"
   needToRebuild <- checkDibTimestamps
   rebuild needToRebuild
-  system $ ".dib/dib +RTS -N -RTS " ++ args
+  system $ correctExe ++ " +RTS -N -RTS " ++ args
 
 shouldHandleInit :: [String] -> Bool
 shouldHandleInit args = (length args) >= 1 && (head args) == "--init"	
