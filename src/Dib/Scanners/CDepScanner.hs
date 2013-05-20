@@ -11,6 +11,7 @@ import qualified Data.Text as T
 import qualified System.Directory as Dir
 import qualified System.FilePath as F
 import Control.Monad.State.Lazy
+import qualified System.IO.Strict as Strict
 
 --TODO: move to another module. Dib.Types?
 --                    Filename, path
@@ -99,7 +100,7 @@ spider file = do
 spiderHelper :: forall (m :: * -> *).(MonadIO m, MonadState ParseState m) => [FilePath] -> m ()
 spiderHelper [] =  return ()
 spiderHelper (file:_) = do
-  c <- liftIO $ readFile file
+  c <- liftIO $ Strict.readFile file
   let deps = gatherDependencies c
   s <- get
   put $ s {currentDeps = S.insert (pathToDependency file) (currentDeps s) }

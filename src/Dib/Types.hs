@@ -20,7 +20,7 @@ type ChecksumDB = Map.Map T.Text Word32
 type UpToDateTargets = Set.Set Target
 -- | Type wrapper for the list of database updates that will happen after
 -- a successful 'Target' build.
-type PendingDBUpdates = [(T.Text, Integer)]
+type PendingDBUpdates = Map.Map T.Text Integer
 -- | Type wrapper for the dictionary of arguments that are extracted from the
 -- command line.
 type ArgDict = Map.Map String String

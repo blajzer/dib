@@ -50,7 +50,7 @@ dib targets = do
     then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\"" else
     do
       (tdb, cdb) <- loadDatabase
-      (_, s) <- runBuild (runTarget (fromJust theTarget) >> writePendingDBUpdates) (BuildState buildArgs tdb cdb Set.empty [])
+      (_, s) <- runBuild (runTarget (fromJust theTarget) >> writePendingDBUpdates) (BuildState buildArgs tdb cdb Set.empty Map.empty)
       saveDatabase (getTimestampDB s) (getChecksumDB s)
       return ()
 
@@ -297,7 +297,7 @@ updateDatabaseHelper srcFiles destFiles = do
   let pdbu = getPendingDBUpdates buildstate
   timestamps <- liftIO $ mapM getTimestamp srcFiles
   let filteredResults = filter (\(_,y) -> y /= 0) $ zip srcFiles timestamps
-  let updatedPDBU = pdbu ++ filteredResults
+  let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert k v m) pdbu filteredResults 
   let cdb = getChecksumDB buildstate
   let (key, cs) = getChecksumPair srcFiles destFiles
   let updatedCDB = Map.insert key cs cdb
@@ -311,7 +311,7 @@ updateDatabaseExtraDeps result@(Left _) deps = do
   let pdbu = getPendingDBUpdates buildstate
   timestamps <- liftIO $ mapM getTimestamp deps
   let filteredResults = filter (\(_,y) -> y /= 0) $ zip deps timestamps
-  let updatedPDBU = pdbu ++ filteredResults
+  let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert k v m) pdbu filteredResults 
   put $ putPendingDBUpdates buildstate updatedPDBU
   return result
 
@@ -320,6 +320,6 @@ writePendingDBUpdates = do
   buildstate <- get
   let tdb = getTimestampDB buildstate
   let pdbu = getPendingDBUpdates buildstate
-  let updatedTDB = L.foldl' (\d (f, t) -> Map.insert f t d) tdb pdbu
-  put $ putPendingDBUpdates (putTimestampDB buildstate updatedTDB) []
+  let updatedTDB = Map.union pdbu tdb
+  put $ putPendingDBUpdates (putTimestampDB buildstate updatedTDB) Map.empty
   return ()
