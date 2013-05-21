@@ -253,6 +253,7 @@ spawnStageThreads f m i (a:as) = do
   let numActive = L.length active
   let (toSpawn, theRest) = L.splitAt (m - numActive) i
   futures <- liftIO $ mapM (future.f) toSpawn
+  updateDatabase firstResult (fst a)
   mapM_ (uncurry updateDatabase.(\(Just res, (src, _)) -> (res, src))) done
   return (theRest, map snd active ++ zip toSpawn futures, r)
 spawnStageThreads _ _ [] [] = return ([], [], [])
