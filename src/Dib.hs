@@ -241,15 +241,21 @@ future thunk = do
 
 -- returns tuple of rest of input, active threads, and results
 spawnStageThreads :: (SrcTransform -> IO (Either l r)) -> Int -> [SrcTransform] -> [(SrcTransform, MVar (Either l r))] -> BuildM ([SrcTransform], [(SrcTransform, MVar (Either l r))], [Either l r])
-spawnStageThreads f m i a = do
-  results <- liftIO $ mapM (tryTakeMVar.snd) a
-  let r = map fromJust $ L.filter isJust results
-  let (active, done) = L.partition (isNothing.fst) (zip results a)
+spawnStageThreads f m inactive@(_:_) [] = do
+  let (toSpawn, theRest) = L.splitAt m inactive
+  futures <- liftIO $ mapM (future.f) toSpawn  
+  return (theRest, zip toSpawn futures, [])
+spawnStageThreads f m i (a:as) = do
+  firstResult <- liftIO $ (takeMVar.snd) a
+  results <- liftIO $ mapM (tryTakeMVar.snd) as
+  let (active, done) = L.partition (isNothing.fst) (zip results as)
+  let r = firstResult : map (fromJust.fst) done
   let numActive = L.length active
   let (toSpawn, theRest) = L.splitAt (m - numActive) i
   futures <- liftIO $ mapM (future.f) toSpawn
   mapM_ (uncurry updateDatabase.(\(Just res, (src, _)) -> (res, src))) done
-  return (theRest, zip toSpawn futures ++ map snd active, r)
+  return (theRest, map snd active ++ zip toSpawn futures, r)
+spawnStageThreads _ _ [] [] = return ([], [], [])
 
 -- recursively spawns new tasks
 stageHelper :: (SrcTransform -> IO (Either a t)) -> Int -> [SrcTransform] -> [(SrcTransform, MVar (Either a t))] -> Either [a] t -> BuildM (Either [a] t)
@@ -296,7 +302,7 @@ updateDatabaseHelper srcFiles destFiles = do
   buildstate <- get
   let pdbu = getPendingDBUpdates buildstate
   timestamps <- liftIO $ mapM getTimestamp srcFiles
-  let filteredResults = filter (\(_,y) -> y /= 0) $ zip srcFiles timestamps
+  let filteredResults = filter (\(_, v) -> v /= 0) $ zip srcFiles timestamps
   let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert k v m) pdbu filteredResults 
   let cdb = getChecksumDB buildstate
   let (key, cs) = getChecksumPair srcFiles destFiles
@@ -310,7 +316,7 @@ updateDatabaseExtraDeps result@(Left _) deps = do
   buildstate <- get
   let pdbu = getPendingDBUpdates buildstate
   timestamps <- liftIO $ mapM getTimestamp deps
-  let filteredResults = filter (\(_,y) -> y /= 0) $ zip deps timestamps
+  let filteredResults = filter (\(_, v) -> v /= 0) $ zip deps timestamps
   let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert k v m) pdbu filteredResults 
   put $ putPendingDBUpdates buildstate updatedPDBU
   return result
