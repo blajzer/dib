@@ -216,8 +216,7 @@ runTargetInternal :: Target -> BuildM (Either [SrcTransform] T.Text)
 runTargetInternal t@(Target name _ stages gatherers) = do
   gatheredFiles <- liftIO $ runGatherers gatherers
   let srcTransforms = map (flip OneToOne "") gatheredFiles
-  liftIO $ putStrLn $ "Building target \"" ++ T.unpack name ++ "\""
-  liftIO printSeparator
+  liftIO $ putStrLn $ "==== Target: \"" ++ T.unpack name ++ "\""
   stageResult <- foldM stageFoldFunc (Left srcTransforms) stages
   if isLeft stageResult then targetSuccessFunc t else buildFailFunc stageResult name
 
@@ -272,7 +271,7 @@ stageHelper f m i a r = do
 
 runStage :: Stage -> [SrcTransform] -> BuildM (Either [SrcTransform] T.Text)
 runStage s@(Stage name _ _ extraDeps f) m = do
-  liftIO $ putStrLn $ "--------------- Running stage \"" ++ T.unpack name ++ "\" ---------------"
+  liftIO $ putStrLn $ "-- Stage: \"" ++ T.unpack name ++ "\""
   depScannedFiles <- liftIO $ processMappings s m
   (targetsToBuild, upToDateTargets) <- partitionMappings depScannedFiles extraDeps
   bs <- get
