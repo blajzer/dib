@@ -6,12 +6,12 @@ module Main where
 import Data.List (intercalate)
 import GHC.IO.Exception
 import Control.Monad
+import Data.Time.Clock.POSIX
 import System.Cmd (system)
 import qualified System.Directory as D
 import System.Environment (getArgs)
 import System.Info
 import System.IO
-import System.Time as T
 
 unixExe :: String
 unixExe = ".dib/dib"
@@ -82,8 +82,8 @@ findDib lastPath args = do
 getDibCalendarTimeStr :: IO String
 getDibCalendarTimeStr = do
   modTime <- D.getModificationTime "dib.hs"
-  calTime <- T.toCalendarTime modTime
-  return $ T.calendarTimeToString calTime
+  let calTime = (fromIntegral.fromEnum.utcTimeToPOSIXSeconds) modTime :: Integer
+  return $ show calTime
 
 checkDibTimestamps :: IO Bool
 checkDibTimestamps = do

@@ -27,8 +27,8 @@ import qualified Data.Text.Encoding as TE
 import qualified GHC.Conc as GHC
 import qualified System.Directory as D
 import qualified System.Environment as Env
-import qualified System.Time as Time
 import Data.Maybe
+import Data.Time.Clock.POSIX
 import Data.Word
 
 databaseFile :: String
@@ -173,7 +173,7 @@ getTimestamp f = do
   let unpackedFileName = T.unpack f 
   doesExist <- D.doesFileExist unpackedFileName
   if doesExist then D.getModificationTime unpackedFileName >>= extractSeconds else return 0
-  where extractSeconds (Time.TOD s _) = return s
+  where extractSeconds s = return $ (fromIntegral.fromEnum.utcTimeToPOSIXSeconds) s
 
 hasChecksumChanged :: ChecksumDB -> [T.Text] -> [T.Text] -> IO Bool
 hasChecksumChanged cdb s d = do
