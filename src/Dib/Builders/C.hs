@@ -1,6 +1,6 @@
 -- | A builder for C/C++ code.
 module Dib.Builders.C (
-  CTargetInfo(CTargetInfo, projectName, srcDir, outputLocation, compiler, linker, inFileOption, outFileOption, compileFlags, linkFlags, includeDirs, extraCompileDeps, extraLinkDeps),
+  CTargetInfo(CTargetInfo, projectName, srcDir, outputLocation, compiler, linker, archiver, inFileOption, outFileOption, compileFlags, linkFlags, archiverFlags, includeDirs, extraCompileDeps, extraLinkDeps, staticLibrary),
   BuildLocation(InPlace, BuildDir, ObjAndBinDirs),
   makeCTarget,
   makeCleanTarget,
@@ -34,6 +34,8 @@ data CTargetInfo = CTargetInfo {
   compiler :: String,
   -- | The linker executable.
   linker :: String,
+  -- | The archiver executable.
+  archiver :: String,
   -- | The command line option for the input file.
   inFileOption :: String,
   -- | The command line option for the output file.
@@ -42,13 +44,17 @@ data CTargetInfo = CTargetInfo {
   compileFlags :: String,
   -- | Linker flags.
   linkFlags :: String,
+  -- | Archiver flags.
+  archiverFlags :: String,
   -- | A list of directories where include files can be found. Used for
   -- dependency scanning.
   includeDirs :: [String],
   -- | Extra compilation dependencies.
   extraCompileDeps :: [T.Text],
   -- | Extra linking dependencies.
-  extraLinkDeps :: [T.Text]
+  extraLinkDeps :: [T.Text],
+  -- | Whether or not to build a static lib (using the archiver)
+  staticLibrary :: Bool
   }
 
 -- | The data type for specifying where built files end up.
@@ -70,13 +76,16 @@ emptyConfig = CTargetInfo {
   outputLocation = InPlace,
   compiler = "",
   linker = "",
+  archiver = "",
   inFileOption = "",
   outFileOption = "",
   compileFlags = "",
   linkFlags = "",
+  archiverFlags = "",
   includeDirs = [],
   extraCompileDeps = [],
-  extraLinkDeps = []
+  extraLinkDeps = [],
+  staticLibrary = False
   }
 
 -- | A default configuration for gcc.
@@ -84,8 +93,10 @@ defaultGCCConfig :: CTargetInfo
 defaultGCCConfig = emptyConfig {
   compiler = "gcc",
   linker = "gcc",
+  archiver = "ar",
   inFileOption = "-c",
-  outFileOption = "-o"
+  outFileOption = "-o",
+  archiverFlags = "rs"
   }
 
 -- | A default configuration for g++.
@@ -129,6 +140,7 @@ makeCTarget :: CTargetInfo -> Target
 makeCTarget info = 
   let makeBuildString s t = compiler info ++ " " ++ inFileOption info ++ " " ++ T.unpack s ++ " " ++ outFileOption info ++ " " ++ T.unpack t ++ " " ++ compileFlags info
       makeLinkString ss t = linker info ++ " " ++ unwords (map T.unpack ss) ++ " " ++ outFileOption info ++ " " ++ T.unpack t ++ " " ++ linkFlags info
+      makeArchiveString ss t = archiver info ++ " " ++ archiverFlags info ++ " " ++ T.unpack t ++ " " ++ unwords (map T.unpack ss)
 
       buildCmd (ManyToOne ss t) = do
         let sourceFile = head ss
@@ -144,11 +156,19 @@ makeCTarget info =
         exitCode <- system linkString
         handleExitCode exitCode t linkString
       linkCmd _ = return $ Right "Unhandled SrcTransform."
+      
+      archiveCmd (ManyToOne ss t) = do
+        let archiveString = makeArchiveString ss t
+        putStrLn $ "Archiving: " ++ T.unpack t
+        exitCode <- system archiveString
+        handleExitCode exitCode t archiveString
+      archiveCmd _ = return $ Right "Unhandled SrcTransform."
 
       buildDirGatherer = makeCommandGatherer $ makeBuildDirs info
       cppStage = Stage "compile" (map (changeExt "o" (outputLocation info))) (cDepScanner (includeDirs info)) (extraCompileDeps info) buildCmd
       linkStage = Stage "link" (combineTransforms (remapBinFile (outputLocation info) $ projectName info)) return (extraLinkDeps info) linkCmd
-  in Target (projectName info) [] [cppStage, linkStage] [buildDirGatherer, makeFileTreeGatherer (srcDir info) (matchExtensions [".cpp", ".c"])]
+      archiveStage = Stage "archive" (combineTransforms (remapBinFile (outputLocation info) $ projectName info)) return [] archiveCmd
+  in Target (projectName info) [] [cppStage, if (staticLibrary info) then archiveStage else linkStage] [buildDirGatherer, makeFileTreeGatherer (srcDir info) (matchExtensions [".cpp", ".c"])]
 
 changeExt :: T.Text -> BuildLocation -> SrcTransform -> SrcTransform
 changeExt newExt b (OneToOne l _) = OneToOne l $ remapObjFile b $ T.append (T.dropWhileEnd (/='.') l) newExt
