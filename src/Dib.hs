@@ -232,48 +232,21 @@ stageFoldFunc :: Either [SrcTransform] T.Text -> Stage -> BuildM (Either [SrcTra
 stageFoldFunc (Left t) s = runStage s t
 stageFoldFunc r@(Right _) _ = return r
 
-future :: IO a -> IO (MVar a)
-future thunk = do
-    ref <- newEmptyMVar
-    _ <- forkIO $ thunk >>= putMVar ref
-    return ref
-
--- returns tuple of rest of input, active threads, and results
-spawnStageThreads :: (SrcTransform -> IO (Either l r)) -> Int -> [SrcTransform] -> [(SrcTransform, MVar (Either l r))] -> BuildM ([SrcTransform], [(SrcTransform, MVar (Either l r))], [Either l r])
-spawnStageThreads f m inactive@(_:_) [] = do
-  let (toSpawn, theRest) = L.splitAt m inactive
-  futures <- liftIO $ mapM (future.f) toSpawn  
-  return (theRest, zip toSpawn futures, [])
-spawnStageThreads f m i (a:as) = do
-  firstResult <- liftIO $ (takeMVar.snd) a
-  results <- liftIO $ mapM (tryTakeMVar.snd) as
-  let (active, done) = L.partition (isNothing.fst) (zip results as)
-  let r = firstResult : map (fromJust.fst) done
-  let numActive = L.length active
-  let (toSpawn, theRest) = L.splitAt (m - numActive) i
-  futures <- liftIO $ mapM (future.f) toSpawn
-  updateDatabase firstResult (fst a)
-  mapM_ (uncurry updateDatabase.(\(Just res, (src, _)) -> (res, src))) done
-  return (theRest, map snd active ++ zip toSpawn futures, r)
-spawnStageThreads _ _ [] [] = return ([], [], [])
-
--- recursively spawns new tasks
-stageHelper :: (SrcTransform -> IO (Either a t)) -> Int -> [SrcTransform] -> [(SrcTransform, MVar (Either a t))] -> Either [a] t -> BuildM (Either [a] t)
-stageHelper f m i a r = do
-  let combine right@(Right _) _ = right
-      combine (Left ml) (Left v) = Left (ml ++ [v])
-      combine (Left _) (Right v) = Right v
-  if not (null i) || not (null a) then do
-      (i', a', r') <- spawnStageThreads f m i a
-      stageHelper f m i' a' (L.foldl' combine r r')
-   else
-      return r
-
-workerThreadFunc sf q r f = do
+workerThreadFunc :: (SrcTransform -> IO (Either SrcTransform T.Text)) -> MVar [SrcTransform] -> MVar (Either [SrcTransform] T.Text, [BuildM ()]) -> MVar (Either [SrcTransform] T.Text, [BuildM ()]) -> MVar Int -> IO ()
+workerThreadFunc sf q r f c = do
   queue <- takeMVar q
   if null queue then do
       putMVar q queue
-      return ()
+      count <- takeMVar c
+      let newCount = count - 1
+      if newCount == 0 then do
+          putMVar c newCount
+          finalResult <- readMVar r
+          putMVar f finalResult
+          return ()
+        else do
+          putMVar c newCount
+          return ()
     else do
       let workItem = head queue
       putMVar q (tail queue)
@@ -285,20 +258,18 @@ workerThreadFunc sf q r f = do
           combine (Left _) (Right v) = Right v
       let newResultAcc = (\(res, thunks) -> (combine res taskResult, dbThunk : thunks)) resultAcc
       putMVar r newResultAcc
-      if null $ tail queue then do
-          putMVar f newResultAcc
-          return ()
-        else do
-          workerThreadFunc sf q r f
+      workerThreadFunc sf q r f c
 
-stageHelper' f m i r = do
+stageHelper :: (SrcTransform -> IO (Either SrcTransform T.Text)) -> Int -> [SrcTransform] -> Either [SrcTransform] T.Text -> BuildM (Either [SrcTransform] T.Text)
+stageHelper f m i r = do
   finalResultMVar <- liftIO newEmptyMVar
   resultMVar <- liftIO $ newMVar (r, []) -- (overall result, database thunks)
   queueMVar <- liftIO $ newMVar i
+  threadCountMVar <- liftIO $ newMVar m
   if null i then do
       return r
     else do
-      liftIO $ mapM_ forkIO (take m $ repeat $ workerThreadFunc f queueMVar resultMVar finalResultMVar)
+      liftIO $ mapM_ forkIO (take m $ repeat $ workerThreadFunc f queueMVar resultMVar finalResultMVar threadCountMVar)
       result <- liftIO $ takeMVar finalResultMVar
       sequence_ $ snd result
       return $ fst result
@@ -309,7 +280,7 @@ runStage s@(Stage name _ _ extraDeps f) m = do
   depScannedFiles <- liftIO $ processMappings s m
   (targetsToBuild, upToDateTargets) <- partitionMappings depScannedFiles extraDeps
   bs <- get
-  result <- stageHelper' f (getMaxBuildJobs bs) targetsToBuild (Left $ map transferUpToDateTarget upToDateTargets)
+  result <- stageHelper f (getMaxBuildJobs bs) targetsToBuild (Left $ map transferUpToDateTarget upToDateTargets)
   updateDatabaseExtraDeps result extraDeps
 
 -- These might not be quite correct. I guessed at what made sense.
