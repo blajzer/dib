@@ -269,13 +269,47 @@ stageHelper f m i a r = do
    else
       return r
 
+workerThreadFunc sf q r f = do
+  queue <- takeMVar q
+  if null queue then do
+      putMVar q queue
+      return ()
+    else do
+      let workItem = head queue
+      putMVar q (tail queue)
+      taskResult <- sf workItem
+      let dbThunk = updateDatabase taskResult workItem
+      resultAcc <- takeMVar r
+      let combine right@(Right _) _ = right
+          combine (Left ml) (Left v) = Left (v : ml)
+          combine (Left _) (Right v) = Right v
+      let newResultAcc = (\(res, thunks) -> (combine res taskResult, dbThunk : thunks)) resultAcc
+      putMVar r newResultAcc
+      if null $ tail queue then do
+          putMVar f newResultAcc
+          return ()
+        else do
+          workerThreadFunc sf q r f
+
+stageHelper' f m i r = do
+  finalResultMVar <- liftIO newEmptyMVar
+  resultMVar <- liftIO $ newMVar (r, []) -- (overall result, database thunks)
+  queueMVar <- liftIO $ newMVar i
+  if null i then do
+      return r
+    else do
+      liftIO $ mapM_ forkIO (take m $ repeat $ workerThreadFunc f queueMVar resultMVar finalResultMVar)
+      result <- liftIO $ takeMVar finalResultMVar
+      sequence_ $ snd result
+      return $ fst result
+
 runStage :: Stage -> [SrcTransform] -> BuildM (Either [SrcTransform] T.Text)
 runStage s@(Stage name _ _ extraDeps f) m = do
   liftIO $ putStrLn $ "-- Stage: \"" ++ T.unpack name ++ "\""
   depScannedFiles <- liftIO $ processMappings s m
   (targetsToBuild, upToDateTargets) <- partitionMappings depScannedFiles extraDeps
   bs <- get
-  result <- stageHelper f (getMaxBuildJobs bs) targetsToBuild [] (Left $ map transferUpToDateTarget upToDateTargets)
+  result <- stageHelper' f (getMaxBuildJobs bs) targetsToBuild (Left $ map transferUpToDateTarget upToDateTargets)
   updateDatabaseExtraDeps result extraDeps
 
 -- These might not be quite correct. I guessed at what made sense.
