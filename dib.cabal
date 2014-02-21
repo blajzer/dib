@@ -7,7 +7,7 @@ author:         Brett Lajzer
 maintainer:	    Brett Lajzer
 
 library
-  build-depends:   base >= 4.4, text, containers, mtl, directory, time < 1.5, process, filepath, cereal, bytestring, digest, strict
+  build-depends:   base >= 4.4, text, containers, mtl, directory, time < 1.5, process, filepath, cereal, bytestring, digest, strict, utf8-string
   ghc-options:     -Wall -O2
   hs-source-dirs:  src
   exposed-modules: Dib, Dib.Gatherers, Dib.Stage, Dib.Target, Dib.Types, Dib.Scanners.CDepScanner, Dib.Builders.C, Dib.Builders.Copy, Dib.Builders.Simple, Dib.Util

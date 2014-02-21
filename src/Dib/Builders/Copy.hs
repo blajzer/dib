@@ -29,4 +29,4 @@ remapFile _ _ _ = error "Unhandled SrcTransform"
 makeCopyTarget :: T.Text -> T.Text -> T.Text -> FilterFunc -> [T.Text] -> Target
 makeCopyTarget name src dest f extraDeps =
   let stage = Stage "copy" (map $ remapFile (T.unpack src) (T.unpack dest)) return extraDeps copyFunc 
-  in Target name [] [stage] [makeFileTreeGatherer src f]
+  in Target name (\_ -> 0) [] [stage] [makeFileTreeGatherer src f]

@@ -16,6 +16,8 @@ import Data.Word
 type TimestampDB = Map.Map T.Text Integer
 -- | Type wrapper for the checksum database.
 type ChecksumDB = Map.Map T.Text Word32
+-- Type wrapper for the target checksum database.
+type TargetChecksumDB = Map.Map T.Text Word32
 -- | Type wrapper for the set of currently up-to-date 'Target's.
 type UpToDateTargets = Set.Set Target
 -- | Type wrapper for the list of database updates that will happen after
@@ -26,7 +28,7 @@ type PendingDBUpdates = Map.Map T.Text Integer
 type ArgDict = Map.Map String String
 
 -- | Internal type that contains information state used by the build.
-data BuildState = BuildState BuildArgs TimestampDB ChecksumDB UpToDateTargets PendingDBUpdates
+data BuildState = BuildState BuildArgs TimestampDB ChecksumDB TargetChecksumDB UpToDateTargets PendingDBUpdates
 
 -- | Configuration arguments used by the build
 data BuildArgs = BuildArgs {
@@ -69,21 +71,24 @@ type StageFunc = (SrcTransform -> IO (Either SrcTransform T.Text))
 -- Takes a name, an 'InputTransformer', 'DepScanner', additional dependencies, and the builder function.
 data Stage = Stage T.Text InputTransformer DepScanner [T.Text] StageFunc
 
+-- | Type wrapper for a function that given a Target produces a checksum.
+type ChecksumFunc = (Target -> Word32)
+
 -- | Describes a build target.
--- Takes a name, list of dependencies, listof 'Stage's, and a list of 'Gatherer's.
-data Target = Target T.Text [Target] [Stage] [Gatherer]
+-- Takes a name, checksum, list of dependencies, list of 'Stage's, and a list of 'Gatherer's.
+data Target = Target T.Text ChecksumFunc [Target] [Stage] [Gatherer]
 
 instance Show Target where
-  show (Target t _ _ _) = T.unpack t
+  show (Target t _ _ _ _) = T.unpack t
 
 instance Eq Stage where
   (==) (Stage n _ _ _ _) (Stage n2 _ _ _ _) = n Prelude.== n2
 
 instance Eq Target where
-  (==) (Target n _ _ _) (Target n2 _ _ _) = n Prelude.== n2
+  (==) (Target n _ _ _ _) (Target n2 _ _ _ _) = n Prelude.== n2
 
 instance Ord Target where
-  compare (Target n _ _ _) (Target n2 _ _ _) = compare n n2
+  compare (Target n _ _ _ _) (Target n2 _ _ _ _) = compare n n2
 
 -- | Typeclass representing data types that can be used to collect files
 -- for inout into a target. 

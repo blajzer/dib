@@ -12,15 +12,21 @@ module Dib.Builders.C (
   ) where
 
 import Dib.Gatherers
+import Dib.Target
 import Dib.Types
 import Dib.Scanners.CDepScanner
 
 import Data.List as L
-import qualified Data.Text as T
+import Data.Word
 import System.Cmd (system)
 import System.Directory as D
 import System.Exit
 import System.FilePath as F
+
+import qualified Data.ByteString.UTF8 as BS
+import qualified Data.Digest.CRC32 as Hash
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 
 -- | The record type that is used to pass configuration info for the C builder.
 data CTargetInfo = CTargetInfo {
@@ -56,6 +62,40 @@ data CTargetInfo = CTargetInfo {
   -- | Whether or not to build a static lib (using the archiver)
   staticLibrary :: Bool
   }
+
+-- | Given a 'CTargetInfo' and a 'Target', produces a checksum
+cTargetHash :: CTargetInfo -> Target -> Word32
+cTargetHash info _ = 
+  let srcDirHash = TE.encodeUtf8 $ "srcDir^" `T.append` srcDir info
+      textHash = TE.encodeUtf8 $ T.intercalate "^" $ [
+        "extraCompileDeps",
+        T.intercalate "^" $ extraCompileDeps info,
+        "extraLinkDeps",
+        T.intercalate "^" $ extraLinkDeps info
+        ]
+      stringHash = BS.fromString $ intercalate "^" [
+        "compiler",
+        compiler info,
+        "linker",
+        linker info,
+        "archiver",
+        archiver info,
+        "inFileOption",
+        inFileOption info,
+        "outFileOption",
+        outFileOption info,
+        "compileFlags",
+        compileFlags info,
+        "linkFlags",
+        linkFlags info,
+        "archiverFlags",
+        archiverFlags info,
+        "includeDirs",
+        intercalate "^" $ includeDirs info,
+        "staticLibrary",
+        if staticLibrary info then "True" else "False"
+        ]
+  in Hash.crc32Update (Hash.crc32Update (Hash.crc32 srcDirHash) stringHash) textHash
 
 -- | The data type for specifying where built files end up.
 data BuildLocation =
@@ -168,7 +208,7 @@ makeCTarget info =
       cppStage = Stage "compile" (map (changeExt "o" (outputLocation info))) (cDepScanner (includeDirs info)) (extraCompileDeps info) buildCmd
       linkStage = Stage "link" (combineTransforms (remapBinFile (outputLocation info) $ projectName info)) return (extraLinkDeps info) linkCmd
       archiveStage = Stage "archive" (combineTransforms (remapBinFile (outputLocation info) $ projectName info)) return [] archiveCmd
-  in Target (projectName info) [] [cppStage, if (staticLibrary info) then archiveStage else linkStage] [buildDirGatherer, makeFileTreeGatherer (srcDir info) (matchExtensions [".cpp", ".c"])]
+  in Target (projectName info) (cTargetHash info) [] [cppStage, if (staticLibrary info) then archiveStage else linkStage] [buildDirGatherer, makeFileTreeGatherer (srcDir info) (matchExtensions [".cpp", ".c"])]
 
 changeExt :: T.Text -> BuildLocation -> SrcTransform -> SrcTransform
 changeExt newExt b (OneToOne l _) = OneToOne l $ remapObjFile b $ T.append (T.dropWhileEnd (/='.') l) newExt
@@ -202,5 +242,5 @@ makeCleanTarget info =
       cleanStage = Stage "clean" id return [] cleanCmd
       objectGatherer = makeFileTreeGatherer (objDir $ outputLocation info) (matchExtension ".o")
       programGatherer = makeSingleFileGatherer (programFile $ outputLocation info)
-  in Target ("clean-" `T.append` projectName info) [] [cleanStage] [objectGatherer, programGatherer]
+  in Target ("clean-" `T.append` projectName info) (\_ -> 0) [] [cleanStage] [objectGatherer, programGatherer]
 

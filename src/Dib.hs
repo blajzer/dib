@@ -35,7 +35,7 @@ databaseFile :: String
 databaseFile = ".dib/dibdb"
 
 databaseVersion :: Integer
-databaseVersion = 1
+databaseVersion = 2
 
 -- | The function that should be called to dispatch the build. Takes a list
 -- of 'Target's.
@@ -45,13 +45,13 @@ dib targets = do
   numProcs <- GHC.getNumProcessors
   let buildArgs = parseArgs args targets numProcs
   let selectedTarget = buildTarget buildArgs
-  let theTarget = L.find (\(Target name _ _ _) -> name == selectedTarget) targets
+  let theTarget = L.find (\(Target name _ _ _ _) -> name == selectedTarget) targets
   if isNothing theTarget
     then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\"" else
     do
-      (tdb, cdb) <- loadDatabase
-      (_, s) <- runBuild (runTarget (fromJust theTarget) >> writePendingDBUpdates) (BuildState buildArgs tdb cdb Set.empty Map.empty)
-      saveDatabase (getTimestampDB s) (getChecksumDB s)
+      (tdb, cdb, tcdb) <- loadDatabase
+      (_, s) <- runBuild (runTarget (fromJust theTarget) >> writePendingDBUpdates) (BuildState buildArgs tdb cdb tcdb Set.empty Map.empty)
+      saveDatabase (getTimestampDB s) (getChecksumDB s) (getTargetChecksumDB s)
       return ()
 
 extractVarsFromArgs :: [String] -> ArgDict
@@ -91,59 +91,65 @@ printSeparator = putStrLn "=====================================================
 runBuild :: BuildM a -> BuildState -> IO (a, BuildState)
 runBuild m = runStateT (runBuildImpl m)
 
-loadDatabase :: IO (TimestampDB, ChecksumDB)
+loadDatabase :: IO (TimestampDB, ChecksumDB, TargetChecksumDB)
 loadDatabase = do fileExists <- D.doesFileExist databaseFile
                   fileContents <- if fileExists then B.readFile databaseFile else return B.empty
                   return.handleEither $ Serialize.decode fileContents
-                  where handleEither (Left _) = (Map.empty, Map.empty)
-                        handleEither (Right (v, t, c)) = if v == databaseVersion then (t, c) else (Map.empty, Map.empty)
+                  where handleEither (Left _) = (Map.empty, Map.empty, Map.empty)
+                        handleEither (Right (v, t, c, tc)) = if v == databaseVersion then (t, c, tc) else (Map.empty, Map.empty, Map.empty)
 
-saveDatabase :: TimestampDB -> ChecksumDB -> IO ()
-saveDatabase tdb cdb = B.writeFile databaseFile $ Serialize.encode (databaseVersion, tdb, cdb)
+saveDatabase :: TimestampDB -> ChecksumDB -> TargetChecksumDB -> IO ()
+saveDatabase tdb cdb tcdb = B.writeFile databaseFile $ Serialize.encode (databaseVersion, tdb, cdb, tcdb)
 
 -- | Returns the 'TimestampDB' from the 'BuildState'
 getTimestampDB :: BuildState -> TimestampDB
-getTimestampDB (BuildState _ tdb _ _ _) = tdb
+getTimestampDB (BuildState _ tdb _ _ _ _) = tdb
 
 -- | Puts the 'TimestampDB' back into the 'BuildState'
 putTimestampDB :: BuildState -> TimestampDB -> BuildState
-putTimestampDB (BuildState a _ c t p) tdb = BuildState a tdb c t p
+putTimestampDB (BuildState a _ cdb tcdb t p) tdb = BuildState a tdb cdb tcdb t p
 
 getChecksumDB :: BuildState -> ChecksumDB
-getChecksumDB (BuildState _ _ cdb _ _) = cdb
+getChecksumDB (BuildState _ _ cdb _ _ _) = cdb
 
 putChecksumDB :: BuildState -> ChecksumDB -> BuildState
-putChecksumDB (BuildState a tdb _ t p) cdb = BuildState a tdb cdb t p
+putChecksumDB (BuildState a tdb _ tcdb t p) cdb = BuildState a tdb cdb tcdb t p
+
+getTargetChecksumDB :: BuildState -> TargetChecksumDB
+getTargetChecksumDB (BuildState _ _ _ tcdb _ _) = tcdb
+
+putTargetChecksumDB :: BuildState -> TargetChecksumDB -> BuildState
+putTargetChecksumDB (BuildState a tdb cdb _ t p) tcdb = BuildState a tdb cdb tcdb t p
 
 getUpToDateTargets :: BuildState -> UpToDateTargets
-getUpToDateTargets (BuildState _ _ _ t _) = t
+getUpToDateTargets (BuildState _ _ _ _ t _) = t
 
 putUpToDateTargets :: BuildState -> UpToDateTargets -> BuildState
-putUpToDateTargets (BuildState a tdb cdb _ p) t = BuildState a tdb cdb t p
+putUpToDateTargets (BuildState a tdb cdb tcdb _ p) t = BuildState a tdb cdb tcdb t p
 
 getPendingDBUpdates :: BuildState -> PendingDBUpdates
-getPendingDBUpdates (BuildState _ _ _ _ p) = p
+getPendingDBUpdates (BuildState _ _ _ _ _ p) = p
 
 putPendingDBUpdates :: BuildState -> PendingDBUpdates -> BuildState
-putPendingDBUpdates (BuildState a tdb cdb t _) = BuildState a tdb cdb t
+putPendingDBUpdates (BuildState a tdb cdb tcdb t _) = BuildState a tdb cdb tcdb t
 
 getMaxBuildJobs :: BuildState -> Int
-getMaxBuildJobs (BuildState a _ _ _ _) = maxBuildJobs a
+getMaxBuildJobs (BuildState a _ _ _ _ _) = maxBuildJobs a
 
 -- | Returns whether or not a target is up to date, based on the current build state. 
 targetIsUpToDate :: BuildState -> Target -> Bool
-targetIsUpToDate (BuildState _ _ _ s _) t = Set.member t s
+targetIsUpToDate (BuildState _ _ _ _ s _) t = Set.member t s
 
 -- | Filters out up-to-date mappings
 filterMappings :: [SrcTransform] -> BuildM [SrcTransform]
-filterMappings files = get >>= \(BuildState _ tdb cdb _ _) -> liftIO $ filterM (shouldBuildMapping tdb cdb) files
+filterMappings files = get >>= \(BuildState _ tdb cdb _ _ _) -> liftIO $ filterM (shouldBuildMapping tdb cdb) files
 
 -- | Partitions out up-to-date mappings
-partitionMappings :: [SrcTransform] -> [T.Text] -> BuildM ([SrcTransform], [SrcTransform])
-partitionMappings files extraDeps = do
+partitionMappings :: [SrcTransform] -> [T.Text] -> Bool -> BuildM ([SrcTransform], [SrcTransform])
+partitionMappings files extraDeps force = do
   s <- get
   extraDepsChanged <- liftIO $ hasSrcChanged (getTimestampDB s) extraDeps
-  if extraDepsChanged then do
+  if force || extraDepsChanged then do
       return (files, [])
     else do
       shouldBuild <- liftIO $ mapM (shouldBuildMapping (getTimestampDB s) (getChecksumDB s)) files
@@ -198,7 +204,7 @@ isLeft (Left _) = True
 isLeft _ = False
 
 runTarget :: Target -> BuildM (Either [SrcTransform] T.Text)
-runTarget t@(Target name deps _ _) = do
+runTarget t@(Target name _ deps _ _) = do
   buildState <- get
   let outdatedTargets = filter (not.targetIsUpToDate buildState) deps
   depStatus <- foldM buildFoldFunc (Left []) outdatedTargets
@@ -213,23 +219,29 @@ buildFailFunc (Right err) name = do
 buildFailFunc (Left _) _ = return $ Right ""
 
 runTargetInternal :: Target -> BuildM (Either [SrcTransform] T.Text)
-runTargetInternal t@(Target name _ stages gatherers) = do
+runTargetInternal t@(Target name hashFunc _ stages gatherers) = do
+  buildState <- get
+  let tcdb = getTargetChecksumDB buildState
+  let checksum = hashFunc t
+  let forceRebuild = checksum /= (Map.findWithDefault 0 name tcdb)
   gatheredFiles <- liftIO $ runGatherers gatherers
   let srcTransforms = map (flip OneToOne "") gatheredFiles
   liftIO $ putStrLn $ "==== Target: \"" ++ T.unpack name ++ "\""
-  stageResult <- foldM stageFoldFunc (Left srcTransforms) stages
+  stageResult <- foldM stageFoldFunc (Left srcTransforms) $ zip stages $ repeat forceRebuild
   if isLeft stageResult then targetSuccessFunc t else buildFailFunc stageResult name
 
 targetSuccessFunc :: Target -> BuildM (Either [SrcTransform] T.Text)
-targetSuccessFunc t@(Target name _ _ _) = do
+targetSuccessFunc t@(Target name hashFunc _ _ _) = do
   buildState <- get
-  put $ putUpToDateTargets buildState $ Set.insert t $ getUpToDateTargets buildState
+  let updatedTargets = Set.insert t $ getUpToDateTargets buildState
+  let updatedChecksums = Map.insert name (hashFunc t) $ getTargetChecksumDB buildState
+  put $ putTargetChecksumDB (putUpToDateTargets buildState updatedTargets) updatedChecksums 
   liftIO $ putStrLn $ "Successfully built target \"" ++ T.unpack name ++ "\""
   liftIO $ putStrLn ""
   return $ Left []
 
-stageFoldFunc :: Either [SrcTransform] T.Text -> Stage -> BuildM (Either [SrcTransform] T.Text)
-stageFoldFunc (Left t) s = runStage s t
+stageFoldFunc :: Either [SrcTransform] T.Text -> (Stage, Bool) -> BuildM (Either [SrcTransform] T.Text)
+stageFoldFunc (Left t) (s, force) = runStage s force t
 stageFoldFunc r@(Right _) _ = return r
 
 workerThreadFunc :: (SrcTransform -> IO (Either SrcTransform T.Text)) -> MVar [SrcTransform] -> MVar (Either [SrcTransform] T.Text, [BuildM ()]) -> MVar (Either [SrcTransform] T.Text, [BuildM ()]) -> MVar Int -> IO ()
@@ -274,11 +286,11 @@ stageHelper f m i r = do
       sequence_ $ snd result
       return $ fst result
 
-runStage :: Stage -> [SrcTransform] -> BuildM (Either [SrcTransform] T.Text)
-runStage s@(Stage name _ _ extraDeps f) m = do
+runStage :: Stage -> Bool -> [SrcTransform] -> BuildM (Either [SrcTransform] T.Text)
+runStage s@(Stage name _ _ extraDeps f) force m = do
   liftIO $ putStrLn $ "-- Stage: \"" ++ T.unpack name ++ "\""
   depScannedFiles <- liftIO $ processMappings s m
-  (targetsToBuild, upToDateTargets) <- partitionMappings depScannedFiles extraDeps
+  (targetsToBuild, upToDateTargets) <- partitionMappings depScannedFiles extraDeps force
   bs <- get
   result <- stageHelper f (getMaxBuildJobs bs) targetsToBuild (Left $ map transferUpToDateTarget upToDateTargets)
   updateDatabaseExtraDeps result extraDeps

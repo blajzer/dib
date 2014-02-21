@@ -43,4 +43,4 @@ handleExitCode (ExitFailure _) _ e = return $ Right $ T.pack (show e)
 makeSimpleTarget :: T.Text -> T.Text -> T.Text -> T.Text -> FilterFunc -> [T.Text] -> (String -> String -> String) -> Target
 makeSimpleTarget name src dest ext f extraDeps buildCmdBuilder =
   let stage = Stage name (map $ remapFile (T.unpack src) (T.unpack dest) ext) return extraDeps (buildFunc buildCmdBuilder)
-  in Target name [] [stage] [makeFileTreeGatherer src f]
+  in Target name (\_ -> 0) [] [stage] [makeFileTreeGatherer src f]
