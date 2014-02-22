@@ -167,6 +167,6 @@ main = do
         return ExitSuccess 
       else do
         currentDir <- D.getCurrentDirectory
-        exitcode <- findDib "" (intercalate "" $ map requoteArg args)
+        exitcode <- findDib "" (intercalate " " $ map requoteArg args)
         D.setCurrentDirectory currentDir
         return exitcode
