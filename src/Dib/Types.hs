@@ -16,7 +16,7 @@ import Data.Word
 type TimestampDB = Map.Map T.Text Integer
 -- | Type wrapper for the checksum database.
 type ChecksumDB = Map.Map T.Text Word32
--- Type wrapper for the target checksum database.
+-- | Type wrapper for the target checksum database.
 type TargetChecksumDB = Map.Map T.Text Word32
 -- | Type wrapper for the set of currently up-to-date 'Target's.
 type UpToDateTargets = Set.Set Target
