@@ -6,10 +6,12 @@ module Main where
 import Data.List (intercalate)
 import GHC.IO.Exception
 import Control.Monad
+import Data.Maybe
 import Data.Time.Clock.POSIX
 import System.Cmd (system)
 import qualified System.Directory as D
 import System.Environment (getArgs)
+import System.FilePath as F
 import System.Info
 import System.IO
 
@@ -48,7 +50,7 @@ compilerToConfig :: String -> String
 compilerToConfig "gcc" = "defaultGCCConfig"
 compilerToConfig "g++" = "defaultGXXConfig"
 compilerToConfig "clang" = "defaultClangConfig"
-compilerToConfig _ = undefined
+compilerToConfig template = error $ "Error: unknown template \"" ++ template ++ "\""
 
 -- | Makes a C Builder. Takes a name and source directory.
 cBuilderScript :: String -> String -> String -> String
@@ -62,6 +64,7 @@ cBuilderScript name compiler srcDir = "\
   ++ "  srcDir = \"" ++ srcDir ++ "\",\n"
   ++ "  compileFlags = \"\",\n"
   ++ "  linkFlags = \"\",\n"
+  ++ "  outputLocation = ObjAndBinDirs \"obj\" \".\",\n"
   ++ "  includeDirs = [\"" ++ srcDir ++ "\"]\n"
   ++ "}\n\n"
   ++ "project = makeCTarget projectInfo\n\
@@ -70,14 +73,37 @@ cBuilderScript name compiler srcDir = "\
   \main = dib targets"
 
 -- | Recurses up the file path until it finds a directory with a dib.hs in it
+-- Once it finds a dib.hs, it returns the path.
+findDib :: FilePath -> IO (Maybe FilePath)
+findDib lastPath = do
+  let dibPath = lastPath </> "dib.hs"
+  hasDib <- D.doesFileExist dibPath
+  if hasDib then
+      return $ Just dibPath
+    else do
+      curPath <- D.canonicalizePath $ lastPath </> ".."
+      if curPath /= lastPath then do
+          findDib curPath
+        else
+          return Nothing
+
+-- | Recurses up the file path until it finds a directory with a dib.hs in it
 -- Once it finds a dib.hs, it builds and runs it.
-findDib :: FilePath -> String -> IO ExitCode
-findDib lastPath args = do
+findAndRunDib :: String -> IO ExitCode
+findAndRunDib args = do
     curPath <- D.getCurrentDirectory
-    if curPath /= lastPath then
-        D.doesFileExist "dib.hs" >>= \hasDib -> if hasDib then buildAndRunDib args else D.setCurrentDirectory "../" >> findDib curPath args
-     else
-        putStrLn "Error: can't find dib.hs." >> return (ExitFailure 255)
+    dibPath <- findDib curPath
+    if isJust dibPath then do
+        D.setCurrentDirectory $ F.dropFileName $ fromJust dibPath
+        retVal <- buildAndRunDib args
+        D.setCurrentDirectory curPath
+        return retVal
+      else do
+        putStrLn "Error: can't find dib.hs."
+        putStrLn "Suggestion: use 'dib --init ...' to create one."
+        putStrLn "  Empty Project: 'dib --init empty'"
+        putStrLn "  C Project: 'dib --init c <projectName> (gcc|g++|clang) <srcDir>'"
+        return (ExitFailure 255)
 
 getDibCalendarTimeStr :: IO String
 getDibCalendarTimeStr = do
@@ -138,7 +164,7 @@ buildAndRunDib args = do
   system $ correctExe ++ " +RTS -N -RTS " ++ args
 
 shouldHandleInit :: [String] -> Bool
-shouldHandleInit args = (length args) >= 1 && (head args) == "--init"	
+shouldHandleInit args = (length args) >= 1 && (head args) == "--init"
 
 argsToBuildScript :: [String] -> String
 argsToBuildScript ["c", name, compiler, srcDir] = cBuilderScript name compiler srcDir
@@ -149,13 +175,16 @@ argsToBuildScript _ = error "Error: Unknown template name."
 handleInit :: [String] -> IO Bool
 handleInit args = do
   if shouldHandleInit args then do
-      scriptExists <- D.doesFileExist "dib.hs"
-      if not scriptExists then do
-          let buildScript = argsToBuildScript $ tail args
-          putStrLn "Initializing dib.hs..."
-          withFile "dib.hs" WriteMode (\h -> hPutStr h buildScript >> return True) 
+      dibInCurDir <- D.doesFileExist "dib.hs"
+      if dibInCurDir then
+          error "Error: dib.hs already exists in current directory."
         else do
-          error "Error: dib.hs already exists"
+          curPath <- D.getCurrentDirectory
+          dibPath <- findDib curPath
+          let initPrefix = if isNothing dibPath then "" else "Warning: dib.hs exists in a parent directory, are you sure you want to do this?\n"
+          let buildScript = argsToBuildScript $ tail args
+          putStrLn $ initPrefix ++ "Initializing dib.hs..."
+          withFile "dib.hs" WriteMode (\h -> hPutStr h buildScript >> return True) 
     else
       return False
 
@@ -166,7 +195,5 @@ main = do
     if inited then
         return ExitSuccess 
       else do
-        currentDir <- D.getCurrentDirectory
-        exitcode <- findDib "" (intercalate " " $ map requoteArg args)
-        D.setCurrentDirectory currentDir
+        exitcode <- findAndRunDib (intercalate " " $ map requoteArg args)
         return exitcode
