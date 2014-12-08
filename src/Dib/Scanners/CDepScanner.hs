@@ -109,7 +109,7 @@ spiderHelper (file:_) = do
 
 spiderLauncher :: forall (m :: * -> *).(MonadIO m, MonadState ParseState m) => FilePath -> m ()
 spiderLauncher file = do
-  c <- liftIO $ readFile file
+  c <- liftIO $ Strict.readFile file
   let deps = gatherDependencies c
   mapM_ spider deps
   return ()
