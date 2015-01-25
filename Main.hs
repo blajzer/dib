@@ -24,10 +24,13 @@ windowsExe = ".dib/dib.exe"
 correctExe :: String
 correctExe = if os == "mingw32" then windowsExe else unixExe
 
+correctExtension :: String
+correctExtension = if os == "mingw32" then ".exe" else ""
+
 -- | Location to copy the dib.hs script to and rename it. Get around
 -- an issue with building on Windows.
 tmpDibScript :: String
-tmpDibScript = ".dib/dib-tmp.hs"
+tmpDibScript = "dib-tmp.hs"
 
 -- | The file that stores the timestamp for dib.hs
 timestampFile :: String
@@ -35,7 +38,7 @@ timestampFile = ".dib/timestamp"
 
 -- | The command line for building dib.hs
 buildString :: String
-buildString = "ghc -o " ++ correctExe ++ " -O2 -XOverloadedStrings -rtsopts -threaded -outputdir .dib " ++ tmpDibScript
+buildString = "ghc -o dib" ++ correctExtension ++ " -O2 -XOverloadedStrings -rtsopts -threaded -outputdir . " ++ tmpDibScript
 
 -- | A basic dib script. This is the script saved when running "dib init"
 defaultScript :: String
@@ -140,8 +143,10 @@ processExitCode (ExitFailure n) = error $ "Error " ++ show n ++ " building dib.h
 rebuild :: Bool -> IO ()
 rebuild needToRebuild =
   when needToRebuild $
-   do D.copyFile "dib.hs" tmpDibScript
+   do D.copyFile "dib.hs" $ ".dib/" ++ tmpDibScript
+      D.setCurrentDirectory ".dib"
       exitCode <- system buildString
+      D.setCurrentDirectory ".."
       processExitCode exitCode
       calTimeStr <- getDibCalendarTimeStr
       tsFile <- openFile timestampFile WriteMode
