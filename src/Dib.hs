@@ -50,7 +50,7 @@ dib targets = do
     then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\"" else
     do
       (tdb, cdb, tcdb) <- loadDatabase
-      (_, s) <- runBuild runTarget (fromJust theTarget) (BuildState buildArgs selectedTarget tdb cdb tcdb Set.empty Map.empty)
+      (_, s) <- runBuild (runTarget (fromJust theTarget)) (BuildState buildArgs selectedTarget tdb cdb tcdb Set.empty Map.empty)
       saveDatabase (getTargetTimestampDB s) (getChecksumDB s) (getTargetChecksumDB s)
       return ()
 
@@ -210,7 +210,6 @@ buildFoldFunc (Left _) t@(Target name _ _ _ _) = do
   let oldTargetName = getCurrentTargetName buildState
   put $ putCurrentTargetName buildState name
   result <- runTarget t
-  writePendingDBUpdates
   newBuildState <- get
   put $ putCurrentTargetName newBuildState oldTargetName
   return result
@@ -226,7 +225,12 @@ runTarget t@(Target name _ deps _ _) = do
   buildState <- get
   let outdatedTargets = filter (not.targetIsUpToDate buildState) deps
   depStatus <- foldM buildFoldFunc (Left []) outdatedTargets
-  if isLeft depStatus then runTargetInternal t else buildFailFunc depStatus name
+  if isLeft depStatus then do
+      result <- runTargetInternal t
+      writePendingDBUpdates
+      return result
+    else
+      buildFailFunc depStatus name
   
 buildFailFunc :: Either [SrcTransform] T.Text -> T.Text -> BuildM (Either [SrcTransform] T.Text)
 buildFailFunc (Right err) name = do
