@@ -35,7 +35,7 @@ databaseFile :: String
 databaseFile = ".dib/dibdb"
 
 databaseVersion :: Integer
-databaseVersion = 2
+databaseVersion = 3
 
 -- | The function that should be called to dispatch the build. Takes a list
 -- of 'Target's.
@@ -50,8 +50,8 @@ dib targets = do
     then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\"" else
     do
       (tdb, cdb, tcdb) <- loadDatabase
-      (_, s) <- runBuild (runTarget (fromJust theTarget) >> writePendingDBUpdates) (BuildState buildArgs tdb cdb tcdb Set.empty Map.empty)
-      saveDatabase (getTimestampDB s) (getChecksumDB s) (getTargetChecksumDB s)
+      (_, s) <- runBuild runTarget (fromJust theTarget) (BuildState buildArgs selectedTarget tdb cdb tcdb Set.empty Map.empty)
+      saveDatabase (getTargetTimestampDB s) (getChecksumDB s) (getTargetChecksumDB s)
       return ()
 
 extractVarsFromArgs :: [String] -> ArgDict
@@ -91,58 +91,67 @@ printSeparator = putStrLn "=====================================================
 runBuild :: BuildM a -> BuildState -> IO (a, BuildState)
 runBuild m = runStateT (runBuildImpl m)
 
-loadDatabase :: IO (TimestampDB, ChecksumDB, TargetChecksumDB)
+loadDatabase :: IO (TargetTimestampDB, ChecksumDB, TargetChecksumDB)
 loadDatabase = do fileExists <- D.doesFileExist databaseFile
                   fileContents <- if fileExists then B.readFile databaseFile else return B.empty
                   return.handleEither $ Serialize.decode fileContents
                   where handleEither (Left _) = (Map.empty, Map.empty, Map.empty)
                         handleEither (Right (v, t, c, tc)) = if v == databaseVersion then (t, c, tc) else (Map.empty, Map.empty, Map.empty)
 
-saveDatabase :: TimestampDB -> ChecksumDB -> TargetChecksumDB -> IO ()
+saveDatabase :: TargetTimestampDB -> ChecksumDB -> TargetChecksumDB -> IO ()
 saveDatabase tdb cdb tcdb = B.writeFile databaseFile $ Serialize.encode (databaseVersion, tdb, cdb, tcdb)
+
+getCurrentTargetName :: BuildState -> T.Text
+getCurrentTargetName (BuildState _ t _ _ _ _ _) = t
+
+putCurrentTargetName :: BuildState -> T.Text -> BuildState
+putCurrentTargetName (BuildState a _ tdb cdb tcdb ts p) t = BuildState a t tdb cdb tcdb ts p
+
+getTargetTimestampDB :: BuildState -> TargetTimestampDB
+getTargetTimestampDB (BuildState _ _ tdb _ _ _ _) = tdb
 
 -- | Returns the 'TimestampDB' from the 'BuildState'
 getTimestampDB :: BuildState -> TimestampDB
-getTimestampDB (BuildState _ tdb _ _ _ _) = tdb
+getTimestampDB (BuildState _ t tdb _ _ _ _) = Map.findWithDefault Map.empty t tdb
 
 -- | Puts the 'TimestampDB' back into the 'BuildState'
 putTimestampDB :: BuildState -> TimestampDB -> BuildState
-putTimestampDB (BuildState a _ cdb tcdb t p) tdb = BuildState a tdb cdb tcdb t p
+putTimestampDB (BuildState a t ftdb cdb tcdb ts p) tdb = BuildState a t (Map.insert t tdb ftdb) cdb tcdb ts p
 
 getChecksumDB :: BuildState -> ChecksumDB
-getChecksumDB (BuildState _ _ cdb _ _ _) = cdb
+getChecksumDB (BuildState _ _ _ cdb _ _ _) = cdb
 
 putChecksumDB :: BuildState -> ChecksumDB -> BuildState
-putChecksumDB (BuildState a tdb _ tcdb t p) cdb = BuildState a tdb cdb tcdb t p
+putChecksumDB (BuildState a t tdb _ tcdb ts p) cdb = BuildState a t tdb cdb tcdb ts p
 
 getTargetChecksumDB :: BuildState -> TargetChecksumDB
-getTargetChecksumDB (BuildState _ _ _ tcdb _ _) = tcdb
+getTargetChecksumDB (BuildState _ _ _ _ tcdb _ _) = tcdb
 
 putTargetChecksumDB :: BuildState -> TargetChecksumDB -> BuildState
-putTargetChecksumDB (BuildState a tdb cdb _ t p) tcdb = BuildState a tdb cdb tcdb t p
+putTargetChecksumDB (BuildState a t tdb cdb _ ts p) tcdb = BuildState a t tdb cdb tcdb ts p
 
 getUpToDateTargets :: BuildState -> UpToDateTargets
-getUpToDateTargets (BuildState _ _ _ _ t _) = t
+getUpToDateTargets (BuildState _ _ _ _ _ ts _) = ts
 
 putUpToDateTargets :: BuildState -> UpToDateTargets -> BuildState
-putUpToDateTargets (BuildState a tdb cdb tcdb _ p) t = BuildState a tdb cdb tcdb t p
+putUpToDateTargets (BuildState a t tdb cdb tcdb _ p) ts = BuildState a t tdb cdb tcdb ts p
 
 getPendingDBUpdates :: BuildState -> PendingDBUpdates
-getPendingDBUpdates (BuildState _ _ _ _ _ p) = p
+getPendingDBUpdates (BuildState _ _ _ _ _ _ p) = p
 
 putPendingDBUpdates :: BuildState -> PendingDBUpdates -> BuildState
-putPendingDBUpdates (BuildState a tdb cdb tcdb t _) = BuildState a tdb cdb tcdb t
+putPendingDBUpdates (BuildState a t tdb cdb tcdb ts _) = BuildState a t tdb cdb tcdb ts
 
 getMaxBuildJobs :: BuildState -> Int
-getMaxBuildJobs (BuildState a _ _ _ _ _) = maxBuildJobs a
+getMaxBuildJobs (BuildState a _ _ _ _ _ _) = maxBuildJobs a
 
 -- | Returns whether or not a target is up to date, based on the current build state. 
 targetIsUpToDate :: BuildState -> Target -> Bool
-targetIsUpToDate (BuildState _ _ _ _ s _) t = Set.member t s
+targetIsUpToDate (BuildState _ _ _ _ _ s _) t = Set.member t s
 
 -- | Filters out up-to-date mappings
 filterMappings :: [SrcTransform] -> BuildM [SrcTransform]
-filterMappings files = get >>= \(BuildState _ tdb cdb _ _ _) -> liftIO $ filterM (shouldBuildMapping tdb cdb) files
+filterMappings files = get >>= \(BuildState _ t tdb cdb _ _ _) -> liftIO $ filterM (shouldBuildMapping (Map.findWithDefault Map.empty t tdb) cdb) files
 
 -- | Partitions out up-to-date mappings
 partitionMappings :: [SrcTransform] -> [T.Text] -> Bool -> BuildM ([SrcTransform], [SrcTransform])
@@ -196,7 +205,16 @@ getChecksumPair s d =
   in (joinedDest, Hash.crc32 (TE.encodeUtf8 joinedSrc))
   
 buildFoldFunc :: Either [SrcTransform] T.Text -> Target -> BuildM (Either [SrcTransform] T.Text)
-buildFoldFunc (Left _) t = runTarget t
+buildFoldFunc (Left _) t@(Target name _ _ _ _) = do
+  buildState <- get
+  let oldTargetName = getCurrentTargetName buildState
+  put $ putCurrentTargetName buildState name
+  result <- runTarget t
+  writePendingDBUpdates
+  newBuildState <- get
+  put $ putCurrentTargetName newBuildState oldTargetName
+  return result
+
 buildFoldFunc r@(Right _) _ = return r
 
 isLeft :: Either a b -> Bool

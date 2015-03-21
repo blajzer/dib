@@ -14,6 +14,8 @@ import Data.Word
 
 -- | Type wrapper for the timestamp database.
 type TimestampDB = Map.Map T.Text Integer
+-- | Type wrapper for the target timestamp database.
+type TargetTimestampDB = Map.Map T.Text TimestampDB
 -- | Type wrapper for the checksum database.
 type ChecksumDB = Map.Map T.Text Word32
 -- | Type wrapper for the target checksum database.
@@ -28,7 +30,7 @@ type PendingDBUpdates = Map.Map T.Text Integer
 type ArgDict = Map.Map String String
 
 -- | Internal type that contains information state used by the build.
-data BuildState = BuildState BuildArgs TimestampDB ChecksumDB TargetChecksumDB UpToDateTargets PendingDBUpdates
+data BuildState = BuildState BuildArgs T.Text TargetTimestampDB ChecksumDB TargetChecksumDB UpToDateTargets PendingDBUpdates
 
 -- | Configuration arguments used by the build
 data BuildArgs = BuildArgs {
