@@ -1,6 +1,6 @@
 -- | A builder for C/C++ code.
 module Dib.Builders.C (
-  CTargetInfo(CTargetInfo, projectName, srcDir, outputLocation, compiler, linker, archiver, inFileOption, outFileOption, compileFlags, linkFlags, archiverFlags, includeDirs, extraCompileDeps, extraLinkDeps, staticLibrary),
+  CTargetInfo(CTargetInfo, outputName, targetName, srcDir, outputLocation, compiler, linker, archiver, inFileOption, outFileOption, compileFlags, linkFlags, archiverFlags, includeDirs, extraCompileDeps, extraLinkDeps, staticLibrary),
   BuildLocation(InPlace, BuildDir, ObjAndBinDirs),
   makeCTarget,
   makeCleanTarget,
@@ -30,8 +30,10 @@ import qualified Data.Text.Encoding as TE
 
 -- | The record type that is used to pass configuration info for the C builder.
 data CTargetInfo = CTargetInfo {
-  -- | The name of the project.
-  projectName :: T.Text,
+  -- | The name of the output file.
+  outputName :: T.Text,
+  -- | The name of the 'Target'. Should be unique among all 'Target's in a given build.
+  targetName :: T.Text,
   -- | The directory containing the source for this target.
   srcDir :: T.Text,
   -- | A 'BuildLocation' that defines where the object and executable files go.
@@ -111,7 +113,8 @@ data BuildLocation =
 -- | An empty configuration.
 emptyConfig :: CTargetInfo
 emptyConfig = CTargetInfo {
-  projectName = "",
+  outputName = "",
+  targetName = "",
   srcDir = "",
   outputLocation = InPlace,
   compiler = "",
@@ -206,9 +209,9 @@ makeCTarget info =
 
       buildDirGatherer = makeCommandGatherer $ makeBuildDirs info
       cppStage = Stage "compile" (map (changeExt "o" (outputLocation info))) (cDepScanner (includeDirs info)) (extraCompileDeps info) buildCmd
-      linkStage = Stage "link" (combineTransforms (remapBinFile (outputLocation info) $ projectName info)) return (extraLinkDeps info) linkCmd
-      archiveStage = Stage "archive" (combineTransforms (remapBinFile (outputLocation info) $ projectName info)) return [] archiveCmd
-  in Target (projectName info) (cTargetHash info) [] [cppStage, if (staticLibrary info) then archiveStage else linkStage] [buildDirGatherer, makeFileTreeGatherer (srcDir info) (matchExtensions [".cpp", ".c"])]
+      linkStage = Stage "link" (combineTransforms (remapBinFile (outputLocation info) $ outputName info)) return (extraLinkDeps info) linkCmd
+      archiveStage = Stage "archive" (combineTransforms (remapBinFile (outputLocation info) $ outputName info)) return [] archiveCmd
+  in Target (targetName info) (cTargetHash info) [] [cppStage, if (staticLibrary info) then archiveStage else linkStage] [buildDirGatherer, makeFileTreeGatherer (srcDir info) (matchExtensions [".cpp", ".c"])]
 
 changeExt :: T.Text -> BuildLocation -> SrcTransform -> SrcTransform
 changeExt newExt b (OneToOne l _) = OneToOne l $ remapObjFile b $ T.append (T.dropWhileEnd (/='.') l) newExt
@@ -235,12 +238,12 @@ makeCleanTarget info =
       objDir (BuildDir d) = d
       objDir (ObjAndBinDirs d _) = d
       
-      programFile InPlace = projectName info
-      programFile (BuildDir d) = d `T.snoc` F.pathSeparator `T.append` projectName info
-      programFile (ObjAndBinDirs _ d) = d `T.snoc` F.pathSeparator `T.append` projectName info
+      programFile InPlace = outputName info
+      programFile (BuildDir d) = d `T.snoc` F.pathSeparator `T.append` outputName info
+      programFile (ObjAndBinDirs _ d) = d `T.snoc` F.pathSeparator `T.append` outputName info
   
       cleanStage = Stage "clean" id return [] cleanCmd
       objectGatherer = makeFileTreeGatherer (objDir $ outputLocation info) (matchExtension ".o")
       programGatherer = makeSingleFileGatherer (programFile $ outputLocation info)
-  in Target ("clean-" `T.append` projectName info) (\_ -> 0) [] [cleanStage] [objectGatherer, programGatherer]
+  in Target ("clean-" `T.append` targetName info) (\_ -> 0) [] [cleanStage] [objectGatherer, programGatherer]
 

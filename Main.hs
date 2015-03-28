@@ -63,7 +63,8 @@ cBuilderScript name compiler srcDir = "\
   \import Dib.Builders.C\n\
   \import qualified Data.Text as T\n\n"
   ++ "projectInfo = " ++ (compilerToConfig compiler) ++ " {\n"
-  ++ "  projectName = \"" ++ name ++ "\",\n"
+  ++ "  outputName = \"" ++ name ++ "\",\n"
+  ++ "  targetName = \"" ++ name ++ "\",\n"
   ++ "  srcDir = \"" ++ srcDir ++ "\",\n"
   ++ "  compileFlags = \"\",\n"
   ++ "  linkFlags = \"\",\n"
