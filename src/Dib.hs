@@ -28,6 +28,7 @@ import qualified GHC.Conc as GHC
 import qualified System.Directory as D
 import qualified System.Environment as Env
 import Data.Maybe
+import Data.Time.Clock
 import Data.Time.Clock.POSIX
 import Data.Word
 
@@ -49,9 +50,20 @@ dib targets = do
   if isNothing theTarget
     then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\"" else
     do
+      dbLoadStart <- getCurrentTime
       (tdb, cdb, tcdb) <- loadDatabase
+      dbLoadEnd <- getCurrentTime
+      
+      startTime <- getCurrentTime
       (_, s) <- runBuild (runTarget (fromJust theTarget)) (BuildState buildArgs selectedTarget tdb cdb tcdb Set.empty Map.empty)
+      endTime <- getCurrentTime
+      
+      dbSaveStart <- getCurrentTime
       saveDatabase (getTargetTimestampDB s) (getChecksumDB s) (getTargetChecksumDB s)
+      dbSaveEnd <- getCurrentTime
+
+      putStrLn $ "DB load/save took " ++ (show $ diffUTCTime dbLoadEnd dbLoadStart) ++ "/" ++ (show $ diffUTCTime dbSaveEnd dbSaveStart) ++ " seconds."      
+      putStrLn $ "Build took " ++ (show $ diffUTCTime endTime startTime) ++ " seconds."
       return ()
 
 extractVarsFromArgs :: [String] -> ArgDict
