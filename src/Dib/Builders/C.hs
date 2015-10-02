@@ -18,7 +18,7 @@ import Dib.Scanners.CDepScanner
 
 import Data.List as L
 import Data.Word
-import System.Cmd (system)
+import System.Process (system)
 import System.Directory as D
 import System.Exit
 import System.FilePath as F
@@ -67,9 +67,9 @@ data CTargetInfo = CTargetInfo {
 
 -- | Given a 'CTargetInfo' and a 'Target', produces a checksum
 cTargetHash :: CTargetInfo -> Target -> Word32
-cTargetHash info _ = 
+cTargetHash info _ =
   let srcDirHash = TE.encodeUtf8 $ "srcDir^" `T.append` srcDir info
-      textHash = TE.encodeUtf8 $ T.intercalate "^" $ [
+      textHash = TE.encodeUtf8 $ T.intercalate "^" [
         "extraCompileDeps",
         T.intercalate "^" $ extraCompileDeps info,
         "extraLinkDeps",
@@ -162,7 +162,7 @@ massageFilePath p = T.replace "\\" "_" $ T.replace "/" "_" p
 remapObjFile :: BuildLocation -> T.Text -> T.Text
 remapObjFile InPlace f = f
 remapObjFile (BuildDir d) f = d `T.snoc` F.pathSeparator `T.append` massageFilePath f
-remapObjFile (ObjAndBinDirs d _) f = d `T.snoc` F.pathSeparator `T.append` massageFilePath f 
+remapObjFile (ObjAndBinDirs d _) f = d `T.snoc` F.pathSeparator `T.append` massageFilePath f
 
 remapBinFile :: BuildLocation -> T.Text -> T.Text
 remapBinFile InPlace f = f
@@ -180,7 +180,7 @@ makeBuildDirs info = do
 
 -- | Given a 'CTargetInfo', produces a 'Target'
 makeCTarget :: CTargetInfo -> Target
-makeCTarget info = 
+makeCTarget info =
   let makeBuildString s t = compiler info ++ " " ++ inFileOption info ++ " " ++ T.unpack s ++ " " ++ outFileOption info ++ " " ++ T.unpack t ++ " " ++ compileFlags info
       makeLinkString ss t = linker info ++ " " ++ unwords (map T.unpack ss) ++ " " ++ outFileOption info ++ " " ++ T.unpack t ++ " " ++ linkFlags info
       makeArchiveString ss t = archiver info ++ " " ++ archiverFlags info ++ " " ++ T.unpack t ++ " " ++ unwords (map T.unpack ss)
@@ -199,7 +199,7 @@ makeCTarget info =
         exitCode <- system linkString
         handleExitCode exitCode t linkString
       linkCmd _ = return $ Right "Unhandled SrcTransform."
-      
+
       archiveCmd (ManyToOne ss t) = do
         let archiveString = makeArchiveString ss t
         putStrLn $ "Archiving: " ++ T.unpack t
@@ -211,7 +211,7 @@ makeCTarget info =
       cppStage = Stage "compile" (map (changeExt "o" (outputLocation info))) (cDepScanner (includeDirs info)) (extraCompileDeps info) buildCmd
       linkStage = Stage "link" (combineTransforms (remapBinFile (outputLocation info) $ outputName info)) return (extraLinkDeps info) linkCmd
       archiveStage = Stage "archive" (combineTransforms (remapBinFile (outputLocation info) $ outputName info)) return [] archiveCmd
-  in Target (targetName info) (cTargetHash info) [] [cppStage, if (staticLibrary info) then archiveStage else linkStage] [buildDirGatherer, makeFileTreeGatherer (srcDir info) (matchExtensions [".cpp", ".c"])]
+  in Target (targetName info) (cTargetHash info) [] [cppStage, if staticLibrary info then archiveStage else linkStage] [buildDirGatherer, makeFileTreeGatherer (srcDir info) (matchExtensions [".cpp", ".c"])]
 
 changeExt :: T.Text -> BuildLocation -> SrcTransform -> SrcTransform
 changeExt newExt b (OneToOne l _) = OneToOne l $ remapObjFile b $ T.append (T.dropWhileEnd (/='.') l) newExt
@@ -233,17 +233,17 @@ makeCleanTarget info =
         D.removeFile (T.unpack s)
         return $ Left $ OneToOne "" ""
       cleanCmd _ = error "Should never hit this."
-  
+
       objDir InPlace = srcDir info
       objDir (BuildDir d) = d
       objDir (ObjAndBinDirs d _) = d
-      
+
       programFile InPlace = outputName info
       programFile (BuildDir d) = d `T.snoc` F.pathSeparator `T.append` outputName info
       programFile (ObjAndBinDirs _ d) = d `T.snoc` F.pathSeparator `T.append` outputName info
-  
+
       cleanStage = Stage "clean" id return [] cleanCmd
       objectGatherer = makeFileTreeGatherer (objDir $ outputLocation info) (matchExtension ".o")
       programGatherer = makeSingleFileGatherer (programFile $ outputLocation info)
-  in Target ("clean-" `T.append` targetName info) (\_ -> 0) [] [cleanStage] [objectGatherer, programGatherer]
+  in Target ("clean-" `T.append` targetName info) (const 0) [] [cleanStage] [objectGatherer, programGatherer]
 

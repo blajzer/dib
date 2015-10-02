@@ -5,6 +5,7 @@
 -- not export any of these types directly; other modules do.
 module Dib.Types where
 
+import Control.Applicative
 import Control.Monad.State as S
 import qualified Data.Map as Map
 import qualified Data.Serialize as Serialize
@@ -43,7 +44,7 @@ data BuildArgs = BuildArgs {
 -- | Newtype wrapper for the build monad transformer stack.
 newtype BuildM a = BuildMImpl {
   runBuildImpl :: S.StateT BuildState IO a
-  } deriving (Monad, MonadIO, MonadState BuildState)
+  } deriving (Functor, Applicative, Monad, MonadIO, MonadState BuildState)
 
 -- | Data type for expressing mapping of input files to output files
 data SrcTransform =
@@ -93,7 +94,7 @@ instance Ord Target where
   compare (Target n _ _ _ _) (Target n2 _ _ _ _) = compare n n2
 
 -- | Typeclass representing data types that can be used to collect files
--- for inout into a target. 
+-- for inout into a target.
 class GatherStrategy a where
   -- | Function that given the strategy, will produce a list of file paths.
   gather :: a -> IO [T.Text]
