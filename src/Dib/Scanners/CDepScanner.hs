@@ -44,22 +44,28 @@ removeCR = filter (/= '\r')
 removeLeadingWS :: String -> String
 removeLeadingWS = dropWhile (\x -> x == ' ' || x == '\t')
 
--- input string -> block comment -> line comment -> string literal -> output string
-removeComments :: String -> Bool -> Bool -> Bool -> String
-removeComments ('/':'*':xs) False False False = removeComments xs True False False
-removeComments ('/':'/':xs) False False False = removeComments xs False True False
-removeComments ('\n':xs) False True False = '\n' : removeComments xs False False False
-removeComments ('"':xs) False False False = '"' : removeComments xs False False True
-removeComments ('"':xs) False False True = '"' : removeComments xs False False False
-removeComments ('*':'/':xs) True False False = removeComments xs False False False
-removeComments (_:xs) True False False = removeComments xs True False False
-removeComments (_:xs) False True False = removeComments xs False True False
-removeComments (x:xs) False False False = x : removeComments xs False False False
-removeComments (x:xs) False False True = x : removeComments xs False False True
-removeComments [] False False False = []
-removeComments [] False True False = []
-removeComments [] True False False = error "Unterminated block comment."
-removeComments _ _ _ _ = error "Undefined condition encountered."
+removeBlockComment :: String -> String
+removeBlockComment ('*':'/':xs) = removeComments xs
+removeBlockComment (_:xs) = removeBlockComment xs
+removeBlockComment [] = error "Unterminated block comment."
+
+removeLineComment :: String -> String
+removeLineComment ('\n':xs) = removeComments xs
+removeLineComment (_:xs) = removeLineComment xs
+removeLineComment [] = []
+
+processStringLiteral :: String -> String
+processStringLiteral ('\\':'"':xs) = '\\' : '"' : processStringLiteral xs
+processStringLiteral ('"':xs) = '"' : removeComments xs
+processStringLiteral (x:xs) = x : processStringLiteral xs
+processStringLiteral [] = error "Unterminated string literal."
+
+removeComments :: String -> String
+removeComments ('/':'*':xs) = removeBlockComment xs
+removeComments ('/':'/':xs) = removeLineComment xs
+removeComments ('"':xs) = '"':processStringLiteral xs
+removeComments (x:xs) = x:removeComments xs
+removeComments [] = []
 
 filterBlank :: [String] -> [String]
 filterBlank = filter (\x -> x /= "\n" && x /= [])
@@ -75,7 +81,7 @@ dequoteInclude s =
 
 -- intial pass, removes comments and leading whitespace, then filters out extra lines
 pass1 :: String -> [String]
-pass1 s = filterBlank $ map removeLeadingWS $ lines $ removeComments (removeCR s) False False False
+pass1 s = filterBlank $ map removeLeadingWS $ lines $ removeComments (removeCR s) --False False False
 
 -- second pass, cleans up includes
 pass2 :: [String] -> [String]
