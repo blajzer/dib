@@ -10,6 +10,7 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified System.Directory as Dir
 import qualified System.FilePath as F
+import Control.Applicative
 import Control.Monad.State.Lazy
 import qualified System.IO.Strict as Strict
 
@@ -17,10 +18,10 @@ import qualified System.IO.Strict as Strict
 --                    Filename, path
 data Dependency = Dependency String String
   deriving (Show)
-  
+
 instance Eq Dependency where
   (Dependency f1 _) == (Dependency f2 _) = f1 == f2
-  
+
 instance Ord Dependency where
   compare (Dependency f1 _) (Dependency f2 _) = compare f1 f2
 
@@ -43,19 +44,28 @@ removeCR = filter (/= '\r')
 removeLeadingWS :: String -> String
 removeLeadingWS = dropWhile (\x -> x == ' ' || x == '\t')
 
--- input string -> block comment -> line comment -> output string
-removeComments :: String -> Bool -> Bool -> String
-removeComments ('/':'*':xs) False False = removeComments xs True False
-removeComments ('/':'/':xs) False False = removeComments xs False True
-removeComments ('\n':xs) False True = '\n' : removeComments xs False False
-removeComments ('*':'/':xs) True False = removeComments xs False False
-removeComments (_:xs) True False = removeComments xs True False
-removeComments (_:xs) False True = removeComments xs False True
-removeComments (x:xs) False False = x : removeComments xs False False
-removeComments [] False False = []
-removeComments [] False True = []
-removeComments [] True False = error "Unterminated block comment."
-removeComments _ _ _ = error "Undefined condition encountered."
+removeBlockComment :: String -> String
+removeBlockComment ('*':'/':xs) = removeComments xs
+removeBlockComment (_:xs) = removeBlockComment xs
+removeBlockComment [] = error "Unterminated block comment."
+
+removeLineComment :: String -> String
+removeLineComment ('\n':xs) = removeComments xs
+removeLineComment (_:xs) = removeLineComment xs
+removeLineComment [] = []
+
+processStringLiteral :: String -> String
+processStringLiteral ('\\':'"':xs) = '\\' : '"' : processStringLiteral xs
+processStringLiteral ('"':xs) = '"' : removeComments xs
+processStringLiteral (x:xs) = x : processStringLiteral xs
+processStringLiteral [] = error "Unterminated string literal."
+
+removeComments :: String -> String
+removeComments ('/':'*':xs) = removeBlockComment xs
+removeComments ('/':'/':xs) = removeLineComment xs
+removeComments ('"':xs) = '"':processStringLiteral xs
+removeComments (x:xs) = x:removeComments xs
+removeComments [] = []
 
 filterBlank :: [String] -> [String]
 filterBlank = filter (\x -> x /= "\n" && x /= [])
@@ -64,14 +74,14 @@ extractIncludes :: [String] -> [String]
 extractIncludes = filter (\x -> "#include" == takeWhile (/= ' ') x)
 
 dequoteInclude :: String -> String
-dequoteInclude s = 
+dequoteInclude s =
   let endPortion = dropWhile (\x -> x /= '\"' && x /= '<') s
       endLen = length endPortion
   in if endLen > 0 then takeWhile (\x -> x /= '\"' && x /= '>') $ tail endPortion else []
 
 -- intial pass, removes comments and leading whitespace, then filters out extra lines
 pass1 :: String -> [String]
-pass1 s = filterBlank $ map removeLeadingWS $ lines $ removeComments (removeCR s) False False
+pass1 s = filterBlank $ map removeLeadingWS $ lines $ removeComments (removeCR s) --False False False
 
 -- second pass, cleans up includes
 pass2 :: [String] -> [String]
@@ -89,7 +99,7 @@ pathToDependency path = Dependency (F.takeFileName path) path
 spider :: forall (m :: * -> *).(MonadIO m, MonadState ParseState m) => String -> m ()
 spider file = do
   s <- get
-  paths <- filterM (includeFilter $ currentDeps s) $ possibleFilenames file (searchPaths s) 
+  paths <- filterM (includeFilter $ currentDeps s) $ possibleFilenames file (searchPaths s)
   spiderHelper paths
   return ()
     where

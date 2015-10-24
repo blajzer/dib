@@ -3,12 +3,11 @@
 -- scripts quite a bit easier.
 module Main where
 
-import Data.List (intercalate)
 import GHC.IO.Exception
 import Control.Monad
 import Data.Maybe
 import Data.Time.Clock.POSIX
-import System.Cmd (system)
+import System.Process (system)
 import qualified System.Directory as D
 import System.Environment (getArgs)
 import System.FilePath as F
@@ -62,7 +61,7 @@ cBuilderScript name compiler srcDir = "\
   \import Dib\n\
   \import Dib.Builders.C\n\
   \import qualified Data.Text as T\n\n"
-  ++ "projectInfo = " ++ (compilerToConfig compiler) ++ " {\n"
+  ++ "projectInfo = " ++ compilerToConfig compiler ++ " {\n"
   ++ "  outputName = \"" ++ name ++ "\",\n"
   ++ "  targetName = \"" ++ name ++ "\",\n"
   ++ "  srcDir = \"" ++ srcDir ++ "\",\n"
@@ -86,7 +85,7 @@ findDib lastPath = do
       return $ Just dibPath
     else do
       curPath <- D.canonicalizePath $ lastPath </> ".."
-      if curPath /= lastPath then do
+      if curPath /= lastPath then
           findDib curPath
         else
           return Nothing
@@ -170,7 +169,7 @@ buildAndRunDib args = do
   system $ correctExe ++ " +RTS -N -RTS " ++ args
 
 shouldHandleInit :: [String] -> Bool
-shouldHandleInit args = (length args) >= 1 && (head args) == "--init"
+shouldHandleInit args = not (null args) && head args == "--init"
 
 argsToBuildScript :: [String] -> String
 argsToBuildScript ["c", name, compiler, srcDir] = cBuilderScript name compiler srcDir
@@ -179,7 +178,7 @@ argsToBuildScript [] = defaultScript
 argsToBuildScript _ = error "Error: Unknown template name."
 
 handleInit :: [String] -> IO Bool
-handleInit args = do
+handleInit args =
   if shouldHandleInit args then do
       dibInCurDir <- D.doesFileExist "dib.hs"
       if dibInCurDir then
@@ -190,7 +189,7 @@ handleInit args = do
           let initPrefix = if isNothing dibPath then "" else "Warning: dib.hs exists in a parent directory, are you sure you want to do this?\n"
           let buildScript = argsToBuildScript $ tail args
           putStrLn $ initPrefix ++ "Initializing dib.hs..."
-          withFile "dib.hs" WriteMode (\h -> hPutStr h buildScript >> return True) 
+          withFile "dib.hs" WriteMode (\h -> hPutStr h buildScript >> return True)
     else
       return False
 
@@ -199,7 +198,6 @@ main = do
     args <- getArgs
     inited <- handleInit args
     if inited then
-        return ExitSuccess 
-      else do
-        exitcode <- findAndRunDib (intercalate " " $ map requoteArg args)
-        return exitcode
+        return ExitSuccess
+      else
+        findAndRunDib (unwords $ map requoteArg args)
