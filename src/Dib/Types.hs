@@ -43,7 +43,7 @@ data BuildArgs = BuildArgs {
 -- | Newtype wrapper for the build monad transformer stack.
 newtype BuildM a = BuildMImpl {
   runBuildImpl :: S.StateT BuildState IO a
-  } deriving (Monad, MonadIO, MonadState BuildState)
+  } deriving (Functor, Applicative, Monad, MonadIO, MonadState BuildState)
 
 -- | Data type for expressing mapping of input files to output files
 data SrcTransform =

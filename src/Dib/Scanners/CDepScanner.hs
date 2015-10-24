@@ -35,7 +35,7 @@ data ParseState = PS {
 
 newtype DepGatherer a = DepGatherer {
   runDepGatherer :: StateT ParseState IO a
-  } deriving (Monad, MonadIO, MonadState ParseState)
+  } deriving (Functor, Applicative, Monad, MonadIO, MonadState ParseState)
 
 removeCR :: String -> String
 removeCR = filter (/= '\r')

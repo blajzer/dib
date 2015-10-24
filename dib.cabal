@@ -7,14 +7,14 @@ author:         Brett Lajzer
 maintainer:	    Brett Lajzer
 
 library
-  build-depends:   base >= 4.4, text, containers, mtl, directory, time < 1.5, process, filepath, cereal, bytestring, digest, strict, utf8-string
+  build-depends:   base >= 4.4, text, containers, mtl, directory, time, process, filepath, cereal, bytestring, digest, strict, utf8-string
   ghc-options:     -Wall -O2
   hs-source-dirs:  src
   exposed-modules: Dib, Dib.Gatherers, Dib.Stage, Dib.Target, Dib.Types, Dib.Scanners.CDepScanner, Dib.Builders.C, Dib.Builders.Copy, Dib.Builders.Simple, Dib.Util
   extensions:      OverloadedStrings
 
 executable dib
-  build-depends:   base >= 4.4, containers, mtl, time < 1.5, directory, filepath, transformers
+  build-depends:   base >= 4.4, containers, mtl, time, directory, filepath, transformers
   ghc-options:     -Wall -O2
   hs-source-dirs:  .
   main-is:         Main.hs
