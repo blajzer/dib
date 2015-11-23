@@ -54,17 +54,31 @@ removeLineComment ('\n':xs) = removeComments xs
 removeLineComment (_:xs) = removeLineComment xs
 removeLineComment [] = []
 
+processCharLiteral :: String -> String
+processCharLiteral ('\\':x:'\'':xs) = '\\' : x : '\'' : removeComments xs
+processCharLiteral (x:'\'':xs) = x : '\'' : removeComments xs
+processCharLiteral (x:xs) = x : removeComments xs
+processCharLiteral [] = []
+
 processStringLiteral :: String -> String
 processStringLiteral ('\\':'"':xs) = '\\' : '"' : processStringLiteral xs
 processStringLiteral ('"':xs) = '"' : removeComments xs
 processStringLiteral (x:xs) = x : processStringLiteral xs
 processStringLiteral [] = error "Unterminated string literal."
 
+processDirective :: String -> String
+processDirective ('\\':'\n':xs) = '\\' : '\n' : processDirective xs
+processDirective ('\n':xs) = '\n' : removeComments xs
+processDirective (x:xs) = x : processDirective xs
+processDirective [] = []
+
 removeComments :: String -> String
+removeComments ('#':xs) = '#' : processDirective xs
 removeComments ('/':'*':xs) = removeBlockComment xs
 removeComments ('/':'/':xs) = removeLineComment xs
-removeComments ('"':xs) = '"':processStringLiteral xs
-removeComments (x:xs) = x:removeComments xs
+removeComments ('\'':xs) = '\'' : processCharLiteral xs
+removeComments ('"':xs) = '"' : processStringLiteral xs
+removeComments (x:xs) = x : removeComments xs
 removeComments [] = []
 
 filterBlank :: [String] -> [String]
@@ -81,7 +95,7 @@ dequoteInclude s =
 
 -- intial pass, removes comments and leading whitespace, then filters out extra lines
 pass1 :: String -> [String]
-pass1 s = filterBlank $ map removeLeadingWS $ lines $ removeComments (removeCR s) --False False False
+pass1 s = filterBlank $ map removeLeadingWS $ lines $ removeComments (removeCR s)
 
 -- second pass, cleans up includes
 pass2 :: [String] -> [String]
