@@ -43,8 +43,8 @@ databaseVersion = 3
 -- of 'Target's.
 dib :: [Target] -> IO ()
 dib targets = do
-  hSetBuffering stdout NoBuffering
-  hSetBuffering stderr NoBuffering
+  hSetBuffering stdout LineBuffering
+  hSetBuffering stderr LineBuffering
   args <- Env.getArgs
   numProcs <- GHC.getNumProcessors
   let buildArgs = parseArgs args targets numProcs

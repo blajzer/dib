@@ -195,8 +195,8 @@ handleInit args =
 
 main :: IO ExitCode
 main = do
-    hSetBuffering stdout NoBuffering
-    hSetBuffering stderr NoBuffering
+    hSetBuffering stdout LineBuffering
+    hSetBuffering stderr LineBuffering
     args <- getArgs
     inited <- handleInit args
     if inited then
