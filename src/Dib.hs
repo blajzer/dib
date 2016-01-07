@@ -31,6 +31,7 @@ import Data.Maybe
 import Data.Time.Clock
 import Data.Time.Clock.POSIX
 import Data.Word
+import System.IO
 
 databaseFile :: String
 databaseFile = ".dib/dibdb"
@@ -42,6 +43,8 @@ databaseVersion = 3
 -- of 'Target's.
 dib :: [Target] -> IO ()
 dib targets = do
+  hSetBuffering stdout NoBuffering
+  hSetBuffering stderr NoBuffering
   args <- Env.getArgs
   numProcs <- GHC.getNumProcessors
   let buildArgs = parseArgs args targets numProcs
@@ -53,16 +56,16 @@ dib targets = do
       dbLoadStart <- getCurrentTime
       (tdb, cdb, tcdb) <- loadDatabase
       dbLoadEnd <- getCurrentTime
-      
+
       startTime <- getCurrentTime
       (_, s) <- runBuild (runTarget (fromJust theTarget)) (BuildState buildArgs selectedTarget tdb cdb tcdb Set.empty Map.empty)
       endTime <- getCurrentTime
-      
+
       dbSaveStart <- getCurrentTime
       saveDatabase (getTargetTimestampDB s) (getChecksumDB s) (getTargetChecksumDB s)
       dbSaveEnd <- getCurrentTime
 
-      putStrLn $ "DB load/save took " ++ (show $ diffUTCTime dbLoadEnd dbLoadStart) ++ "/" ++ (show $ diffUTCTime dbSaveEnd dbSaveStart) ++ " seconds."      
+      putStrLn $ "DB load/save took " ++ (show $ diffUTCTime dbLoadEnd dbLoadStart) ++ "/" ++ (show $ diffUTCTime dbSaveEnd dbSaveStart) ++ " seconds."
       putStrLn $ "Build took " ++ (show $ diffUTCTime endTime startTime) ++ " seconds."
       return ()
 
@@ -83,7 +86,7 @@ getArgDict = do
 addEnvToDict :: ArgDict -> [(String, String)] -> IO ArgDict
 addEnvToDict m vars = do
   env <- Env.getEnvironment
-  let valuesToAdd = map (\(x, y) -> (x, fromMaybe y $ L.lookup x env)) vars  
+  let valuesToAdd = map (\(x, y) -> (x, fromMaybe y $ L.lookup x env)) vars
   return $ L.foldl' (\a (x, y) -> Map.insert x y a) m valuesToAdd
 
 parseArgs :: [String] -> [Target] -> Int -> BuildArgs
@@ -157,7 +160,7 @@ putPendingDBUpdates (BuildState a t tdb cdb tcdb ts _) = BuildState a t tdb cdb 
 getMaxBuildJobs :: BuildState -> Int
 getMaxBuildJobs (BuildState a _ _ _ _ _ _) = maxBuildJobs a
 
--- | Returns whether or not a target is up to date, based on the current build state. 
+-- | Returns whether or not a target is up to date, based on the current build state.
 targetIsUpToDate :: BuildState -> Target -> Bool
 targetIsUpToDate (BuildState _ _ _ _ _ s _) t = Set.member t s
 
@@ -177,7 +180,7 @@ partitionMappings files extraDeps force = do
       let paired = zip shouldBuild files
       let (a, b) = L.partition fst paired
       return (map snd a, map snd b)
-  
+
 
 (<||>) :: IO Bool -> IO Bool -> IO Bool
 (<||>) = liftM2 (||)
@@ -197,7 +200,7 @@ hasSrcChanged m f = let filesInMap = zip f $ map (`Map.lookup` m) f
 
 getTimestamp :: T.Text -> IO Integer
 getTimestamp f = do
-  let unpackedFileName = T.unpack f 
+  let unpackedFileName = T.unpack f
   doesExist <- D.doesFileExist unpackedFileName
   if doesExist then D.getModificationTime unpackedFileName >>= extractSeconds else return 0
   where extractSeconds s = return $ (fromIntegral.fromEnum.utcTimeToPOSIXSeconds) s
@@ -215,7 +218,7 @@ getChecksumPair s d =
   let joinedSrc = T.concat $ L.intersperse ":" s
       joinedDest = T.concat $ L.intersperse ":" d
   in (joinedDest, Hash.crc32 (TE.encodeUtf8 joinedSrc))
-  
+
 buildFoldFunc :: Either [SrcTransform] T.Text -> Target -> BuildM (Either [SrcTransform] T.Text)
 buildFoldFunc (Left _) t@(Target name _ _ _ _) = do
   buildState <- get
@@ -243,7 +246,7 @@ runTarget t@(Target name _ deps _ _) = do
       return result
     else
       buildFailFunc depStatus name
-  
+
 buildFailFunc :: Either [SrcTransform] T.Text -> T.Text -> BuildM (Either [SrcTransform] T.Text)
 buildFailFunc (Right err) name = do
   liftIO printSeparator
@@ -269,7 +272,7 @@ targetSuccessFunc t@(Target name hashFunc _ _ _) = do
   buildState <- get
   let updatedTargets = Set.insert t $ getUpToDateTargets buildState
   let updatedChecksums = Map.insert name (hashFunc t) $ getTargetChecksumDB buildState
-  put $ putTargetChecksumDB (putUpToDateTargets buildState updatedTargets) updatedChecksums 
+  put $ putTargetChecksumDB (putUpToDateTargets buildState updatedTargets) updatedChecksums
   liftIO $ putStrLn $ "Successfully built target \"" ++ T.unpack name ++ "\""
   liftIO $ putStrLn ""
   return $ Left []
@@ -354,7 +357,7 @@ updateDatabaseHelper srcFiles destFiles = do
   let pdbu = getPendingDBUpdates buildstate
   timestamps <- liftIO $ mapM getTimestamp srcFiles
   let filteredResults = filter (\(_, v) -> v /= 0) $ zip srcFiles timestamps
-  let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert k v m) pdbu filteredResults 
+  let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert k v m) pdbu filteredResults
   let cdb = getChecksumDB buildstate
   let (key, cs) = getChecksumPair srcFiles destFiles
   let updatedCDB = Map.insert key cs cdb
@@ -368,7 +371,7 @@ updateDatabaseExtraDeps result@(Left _) deps = do
   let pdbu = getPendingDBUpdates buildstate
   timestamps <- liftIO $ mapM getTimestamp deps
   let filteredResults = filter (\(_, v) -> v /= 0) $ zip deps timestamps
-  let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert k v m) pdbu filteredResults 
+  let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert k v m) pdbu filteredResults
   put $ putPendingDBUpdates buildstate updatedPDBU
   return result
 
