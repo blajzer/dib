@@ -1,3 +1,6 @@
+-- Copyright (c) 2010-2016 Brett Lajzer
+-- See LICENSE for license information.
+
 -- | A builder for C/C++ code.
 module Dib.Builders.C (
   CTargetInfo(CTargetInfo, outputName, targetName, srcDir, outputLocation, compiler, linker, archiver, inFileOption, outFileOption, compileFlags, linkFlags, archiverFlags, includeDirs, extraCompileDeps, extraLinkDeps, staticLibrary),

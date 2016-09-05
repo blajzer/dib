@@ -1,3 +1,6 @@
+-- Copyright (c) 2010-2016 Brett Lajzer
+-- See LICENSE for license information.
+
 -- | The Simple builder allows you to execute a 'OneToOne' trasformation
 -- given a function that generates a command line from the source and
 -- target files.

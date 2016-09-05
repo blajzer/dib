@@ -1,3 +1,6 @@
+-- Copyright (c) 2010-2016 Brett Lajzer
+-- See LICENSE for license information.
+
 -- | TODO: talk about the point of the project and give some examples.
 module Dib (
   SrcTransform(OneToOne, OneToMany, ManyToOne, ManyToMany),

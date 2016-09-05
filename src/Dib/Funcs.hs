@@ -1,2 +1,0 @@
-module Dib.Funcs where
-

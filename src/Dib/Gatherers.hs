@@ -1,4 +1,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+-- Copyright (c) 2010-2016 Brett Lajzer
+-- See LICENSE for license information.
+
 -- | Module that exposes all of the various 'GatherStrategy' types and functions
 -- for dealing with them.
 module Dib.Gatherers(

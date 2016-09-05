@@ -1,3 +1,6 @@
+-- Copyright (c) 2010-2016 Brett Lajzer
+-- See LICENSE for license information.
+
 -- | A trivial builder that copies a directory tree from one location to another.
 module Dib.Builders.Copy (
   makeCopyTarget

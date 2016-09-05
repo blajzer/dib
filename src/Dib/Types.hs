@@ -1,6 +1,9 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, ExistentialQuantification, OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
+-- Copyright (c) 2010-2016 Brett Lajzer
+-- See LICENSE for license information.
+
 -- | Various types used in dib. Due to certain circumstances, this module does
 -- not export any of these types directly; other modules do.
 module Dib.Types where

@@ -1,3 +1,6 @@
+-- Copyright (c) 2010-2016 Brett Lajzer
+-- See LICENSE for license information.
+
 -- | This is the command-line executable "dib". Since Dib proper is a
 -- library, one doesn't need this, but it makes dealing with build
 -- scripts quite a bit easier.

@@ -1,3 +1,6 @@
+-- Copyright (c) 2010-2016 Brett Lajzer
+-- See LICENSE for license information.
+
 -- | Module that exposes the 'Target' data type and a handful of convenience functions
 -- for dealing with 'Target's.
 module Dib.Target(

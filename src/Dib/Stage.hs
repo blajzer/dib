@@ -1,3 +1,6 @@
+-- Copyright (c) 2010-2016 Brett Lajzer
+-- See LICENSE for license information.
+
 -- | Module exposing the 'Stage' type and related type wrappers, along with a
 -- convenience 'emptyStage'.
 module Dib.Stage(

@@ -1,3 +1,6 @@
+-- Copyright (c) 2010-2016 Brett Lajzer
+-- See LICENSE for license information.
+
 -- | Module containing utility functions and common functionality.
 module Dib.Util (
   getSubDirectories
