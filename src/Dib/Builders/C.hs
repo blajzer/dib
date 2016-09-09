@@ -51,6 +51,8 @@ data CTargetInfo = CTargetInfo {
   inFileOption :: String,
   -- | The command line option for the output file.
   outFileOption :: String,
+  -- | The compiler's include option
+  includeOption :: String,
   -- | Compiler flags.
   compileFlags :: String,
   -- | Linker flags.
@@ -58,7 +60,7 @@ data CTargetInfo = CTargetInfo {
   -- | Archiver flags.
   archiverFlags :: String,
   -- | A list of directories where include files can be found. Used for
-  -- dependency scanning.
+  -- dependency scanning and automatically appended to the compile line.
   includeDirs :: [String],
   -- | Extra compilation dependencies.
   extraCompileDeps :: [T.Text],
@@ -89,6 +91,8 @@ cTargetHash info _ =
         inFileOption info,
         "outFileOption",
         outFileOption info,
+		"includeOption",
+		includeOption info,
         "compileFlags",
         compileFlags info,
         "linkFlags",
@@ -125,6 +129,7 @@ emptyConfig = CTargetInfo {
   archiver = "",
   inFileOption = "",
   outFileOption = "",
+  includeOption = "",
   compileFlags = "",
   linkFlags = "",
   archiverFlags = "",
@@ -142,6 +147,7 @@ defaultGCCConfig = emptyConfig {
   archiver = "ar",
   inFileOption = "-c",
   outFileOption = "-o",
+  includeOption = "-I",
   archiverFlags = "rs"
   }
 
@@ -184,7 +190,8 @@ makeBuildDirs info = do
 -- | Given a 'CTargetInfo', produces a 'Target'
 makeCTarget :: CTargetInfo -> Target
 makeCTarget info =
-  let makeBuildString s t = compiler info ++ " " ++ inFileOption info ++ " " ++ T.unpack s ++ " " ++ outFileOption info ++ " " ++ T.unpack t ++ " " ++ compileFlags info
+  let includeDirString = (includeOption info) ++ (L.intercalate (" " ++ includeOption info) $ includeDirs info)
+      makeBuildString s t = compiler info ++ " " ++ inFileOption info ++ " " ++ T.unpack s ++ " " ++ outFileOption info ++ " " ++ T.unpack t ++ " " ++ includeDirString ++ " "++ compileFlags info
       makeLinkString ss t = linker info ++ " " ++ unwords (map T.unpack ss) ++ " " ++ outFileOption info ++ " " ++ T.unpack t ++ " " ++ linkFlags info
       makeArchiveString ss t = archiver info ++ " " ++ archiverFlags info ++ " " ++ T.unpack t ++ " " ++ unwords (map T.unpack ss)
 
@@ -249,4 +256,3 @@ makeCleanTarget info =
       objectGatherer = makeFileTreeGatherer (objDir $ outputLocation info) (matchExtension ".o")
       programGatherer = makeSingleFileGatherer (programFile $ outputLocation info)
   in Target ("clean-" `T.append` targetName info) (const 0) [] [cleanStage] [objectGatherer, programGatherer]
-
