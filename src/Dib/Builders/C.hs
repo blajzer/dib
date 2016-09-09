@@ -3,7 +3,7 @@
 
 -- | A builder for C/C++ code.
 module Dib.Builders.C (
-  CTargetInfo(CTargetInfo, outputName, targetName, srcDir, outputLocation, compiler, linker, archiver, inFileOption, outFileOption, compileFlags, linkFlags, archiverFlags, includeDirs, extraCompileDeps, extraLinkDeps, staticLibrary),
+  CTargetInfo(CTargetInfo, outputName, targetName, srcDir, outputLocation, compiler, linker, archiver, inFileOption, outFileOption, compileFlags, linkFlags, archiverFlags, includeDirs, extraCompileDeps, extraLinkDeps, exclusions, staticLibrary),
   BuildLocation(InPlace, BuildDir, ObjAndBinDirs),
   makeCTarget,
   makeCleanTarget,
@@ -66,6 +66,8 @@ data CTargetInfo = CTargetInfo {
   extraCompileDeps :: [T.Text],
   -- | Extra linking dependencies.
   extraLinkDeps :: [T.Text],
+  -- | Files to exclude from the build.
+  exclusions :: [T.Text],
   -- | Whether or not to build a static lib (using the archiver)
   staticLibrary :: Bool
   }
@@ -78,7 +80,9 @@ cTargetHash info _ =
         "extraCompileDeps",
         T.intercalate "^" $ extraCompileDeps info,
         "extraLinkDeps",
-        T.intercalate "^" $ extraLinkDeps info
+        T.intercalate "^" $ extraLinkDeps info,
+		"exclusions",
+		T.intercalate "^" $ exclusions info
         ]
       stringHash = BS.fromString $ intercalate "^" [
         "compiler",
@@ -136,6 +140,7 @@ emptyConfig = CTargetInfo {
   includeDirs = [],
   extraCompileDeps = [],
   extraLinkDeps = [],
+  exclusions = [],
   staticLibrary = False
   }
 
@@ -187,6 +192,9 @@ makeBuildDirs info = do
   helper (outputLocation info)
   return ()
 
+excludeFiles :: [T.Text] -> T.Text -> Bool
+excludeFiles excl file = L.any (\e -> e `T.isSuffixOf` file) excl
+
 -- | Given a 'CTargetInfo', produces a 'Target'
 makeCTarget :: CTargetInfo -> Target
 makeCTarget info =
@@ -221,7 +229,7 @@ makeCTarget info =
       cppStage = Stage "compile" (map (changeExt "o" (outputLocation info))) (cDepScanner (includeDirs info)) (extraCompileDeps info) buildCmd
       linkStage = Stage "link" (combineTransforms (remapBinFile (outputLocation info) $ outputName info)) return (extraLinkDeps info) linkCmd
       archiveStage = Stage "archive" (combineTransforms (remapBinFile (outputLocation info) $ outputName info)) return [] archiveCmd
-  in Target (targetName info) (cTargetHash info) [] [cppStage, if staticLibrary info then archiveStage else linkStage] [buildDirGatherer, makeFileTreeGatherer (srcDir info) (matchExtensions [".cpp", ".c"])]
+  in Target (targetName info) (cTargetHash info) [] [cppStage, if staticLibrary info then archiveStage else linkStage] [buildDirGatherer, makeFileTreeGatherer (srcDir info) (matchExtensionsExcluded [".cpp", ".c"] [excludeFiles $ exclusions info])]
 
 changeExt :: T.Text -> BuildLocation -> SrcTransform -> SrcTransform
 changeExt newExt b (OneToOne l _) = OneToOne l $ remapObjFile b $ T.append (T.dropWhileEnd (/='.') l) newExt

@@ -18,7 +18,9 @@ module Dib.Gatherers(
   makeCommandGatherer,
   matchAll,
   matchExtension,
-  matchExtensions
+  matchExtensionExcluded,
+  matchExtensions,
+  matchExtensionsExcluded
   )where
 
 import Control.Monad
@@ -30,13 +32,13 @@ import System.FilePath
 
 instance GatherStrategy SingleFileGatherer where
   gather = singleFileGatherFunc
-  
+
 instance GatherStrategy DirectoryGatherer where
   gather = directoryGathererFunc
 
 instance GatherStrategy FileTreeGatherer where
   gather = fileTreeGatherFunc
-  
+
 instance GatherStrategy CommandGatherer where
   gather = commandGatherFunc
 
@@ -100,7 +102,7 @@ filePathFilter = filter noSpecialOrHiddenDirs
 
 directorySplitter :: [(FilePath, Bool)] -> ([FilePath], [FilePath])
 directorySplitter = foldl' splitter ([], [])
-    where splitter (d, f) (path, dir) = if dir then (d ++ [path], f) else (d, f ++ [path]) 
+    where splitter (d, f) (path, dir) = if dir then (d ++ [path], f) else (d, f ++ [path])
 
 fixFilePaths :: FilePath -> [FilePath] -> [FilePath]
 fixFilePaths root = map (root </>)
@@ -127,3 +129,13 @@ matchExtensions :: [T.Text] -> FilterFunc
 matchExtensions exts file = foldl' foldFunc False exts
   where foldFunc True _ = True
         foldFunc False e = e `T.isSuffixOf` file
+
+-- | Filter function that returns files with a given extension that don't match exclusion rules.
+matchExtensionExcluded :: T.Text -> [T.Text -> Bool] -> FilterFunc
+matchExtensionExcluded ext rules file = (T.isSuffixOf ext file) && (not.or $ map (\r -> r file) rules)
+
+-- | Filter function that returns files that match any of a list of extensions, but don't match the exclusion rules.
+matchExtensionsExcluded :: [T.Text] -> [T.Text -> Bool] -> FilterFunc
+matchExtensionsExcluded exts rules file = foldl' foldFunc False exts
+  where foldFunc True _ = True
+        foldFunc False e = (e `T.isSuffixOf` file) && (not.or $ map (\r -> r file) rules)
