@@ -1,7 +1,72 @@
 -- Copyright (c) 2010-2016 Brett Lajzer
 -- See LICENSE for license information.
 
--- | TODO: talk about the point of the project and give some examples.
+-- | = Introduction
+-- Dib is a light-weight, forward build system embedded in Haskell.
+-- Dib represents the build products as a chain of operations starting at the input.
+-- Reverse build systems such as Make and Jam instead attempt to figure out the
+-- operations to perform starting at the desired output and tracing back through
+-- a set of rules to find the correct input file. Dib has no such notion of "rules"
+-- and the general thought process for writing a build script answers the question
+-- "I have these files, how do I build them into the thing I want?", versus a reverse
+-- build system which answers (recursively) "I want this product, what files do I
+-- need to use as input?".
+--
+-- = Concepts
+-- * 'Target' - The most granluar unit of a build. Represents a desired outcome:
+--   e.g. an executable, a folder of files, etc... Contains 'Stage's, which do
+--   the actual work. Somewhat unfortunately, a 'Target'\'s name is its only identifier
+--   in the cache database, so debug/release and multiplatform 'Target' variants
+--   should be named accordingly to prevent full-rebuilds when switching between them.
+-- * 'Stage' - A portion of a pipeline for transforming input data into output data.
+--   These separate major portions of a pipeline: e.g. building source code into
+--   object files, linking object files into an executable, copying some data into place.
+--   'Target's can have multiple 'Stage's, which are executed in sequence, the output
+--   of one is used as the input to the next.
+-- * 'Gatherer' - Used to generate the initial input 'SrcTransform's for the first
+--   'Stage' of a 'Target'.
+-- * 'SrcTransform' - Represents a mapping from input to output. Comes in four varieties:
+--   'OneToOne', 'OneToMany', 'ManyToOne', 'ManyToMany'. Some examples: compiling a
+--   C source file into an object file initially begins as a 'OneToOne', but is converted
+--   into a 'ManyToOne' through dependency scanning (adding the dependencies to the input
+--   exploits the internal timestamp database for free). Copying files from one location to
+--   another would just be a simple 'OneToOne'. A tool that takes in one file and
+--   generates a bunch of output files would use 'OneToMany'.
+--
+-- = Getting Started
+-- Dib is both a library and an executable. The executable exists to cause a rebuild
+-- of the build script whenever it changes, and also as a convenience for invoking both
+-- the build and execution correctly. It's recommended that it be used for everything
+-- except extraordinary use cases. It can also generate an initial build script
+-- through the use of @dib --init@. Run the dib executable with no options for more
+-- information on the available templates.
+--
+-- The most trivial, do nothing build script looks like the following:
+--
+-- @
+-- module Main where
+-- import Dib
+--
+-- targets = []
+-- main = dib targets
+-- @
+--
+-- A build script is expected to declare the available 'Target's and then pass them
+-- to the 'dib' function. Only the top-level 'Target's need to be passed to 'dib';
+-- it will scrape out the dependencies from there. The first 'Target' in the list
+-- is the default 'Target' to build if the dib executable is called with no arguments.
+--
+-- == Additional Information
+-- Arguments can be passed on the command line to the dib executable. These can be
+-- retrieved in the build with 'getArgDict'. The user is also free to use environment variables
+-- as parameter input.
+--
+-- The invocation should look like the following: @dib <target> <key>=<value> <key>=<value> ...@.
+-- Please note that there are no spaces between the keys and values. Quoted strings are
+-- untested and unlikely to work correctly.  A 'Target' must currently be specified
+-- and must be the first argument. This requirement will be relaxed in the future.
+--
+--
 module Dib (
   SrcTransform(OneToOne, OneToMany, ManyToOne, ManyToMany),
   BuildState,
@@ -16,6 +81,7 @@ module Dib (
   ) where
 
 import Dib.Gatherers
+import Dib.Target
 import Dib.Types
 import Control.Concurrent
 import Control.Monad.State as S
@@ -43,16 +109,17 @@ databaseVersion :: Integer
 databaseVersion = 3
 
 -- | The function that should be called to dispatch the build. Takes a list
--- of 'Target's.
+-- of the top-level (root) 'Target's.
 dib :: [Target] -> IO ()
 dib targets = do
   hSetBuffering stdout LineBuffering
   hSetBuffering stderr LineBuffering
   args <- Env.getArgs
   numProcs <- GHC.getNumProcessors
-  let buildArgs = parseArgs args targets numProcs
+  let allTargets = gatherAllTargets targets
+  let buildArgs = parseArgs args allTargets numProcs
   let selectedTarget = buildTarget buildArgs
-  let theTarget = L.find (\(Target name _ _ _ _) -> name == selectedTarget) targets
+  let theTarget = L.find (\(Target name _ _ _ _) -> name == selectedTarget) allTargets
   if isNothing theTarget
     then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\"" else
     do
@@ -71,6 +138,18 @@ dib targets = do
       putStrLn $ "DB load/save took " ++ (show $ diffUTCTime dbLoadEnd dbLoadStart) ++ "/" ++ (show $ diffUTCTime dbSaveEnd dbSaveStart) ++ " seconds."
       putStrLn $ "Build took " ++ (show $ diffUTCTime endTime startTime) ++ " seconds."
       return ()
+
+gatherAllTargetsInternal :: [Target] -> Set.Set Target -> Set.Set Target
+gatherAllTargetsInternal (t:ts) s =
+	let (recurse, newSet) = if Set.notMember t s then (True, Set.insert t s) else (False, s)
+	in if recurse then gatherAllTargetsInternal ts (gatherAllTargetsInternal (getDependencies t) newSet) else gatherAllTargetsInternal ts newSet
+gatherAllTargetsInternal [] s = s
+
+gatherAllTargets :: [Target] -> [Target]
+gatherAllTargets t =
+	let allTargets = Set.toList $ gatherAllTargetsInternal t Set.empty
+	    targetsMinusInitial = L.filter (\x -> x /= head t) allTargets
+	in (head t) : targetsMinusInitial
 
 extractVarsFromArgs :: [String] -> ArgDict
 extractVarsFromArgs args = L.foldl' extractVarsFromArgsInternal Map.empty $ map (L.break (== '=')) args

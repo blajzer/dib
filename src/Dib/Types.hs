@@ -81,7 +81,7 @@ data Stage = Stage T.Text InputTransformer DepScanner [T.Text] StageFunc
 type ChecksumFunc = (Target -> Word32)
 
 -- | Describes a build target.
--- Takes a name, checksum, list of dependencies, list of 'Stage's, and a list of 'Gatherer's.
+-- Takes a name, checksum function, list of dependencies, list of 'Stage's, and a list of 'Gatherer's.
 data Target = Target T.Text ChecksumFunc [Target] [Stage] [Gatherer]
 
 instance Show Target where
@@ -97,9 +97,9 @@ instance Ord Target where
   compare (Target n _ _ _ _) (Target n2 _ _ _ _) = compare n n2
 
 -- | Typeclass representing data types that can be used to collect files
--- for inout into a target.
+-- for input into a target.
 class GatherStrategy a where
-  -- | Function that given the strategy, will produce a list of file paths.
+  -- | Function that, given the strategy, will produce a list of file paths.
   gather :: a -> IO [T.Text]
 
 -- | Existential data type for wrapping 'GatherStrategy's so they can be used
@@ -125,7 +125,7 @@ data FileTreeGatherer = FileTreeGatherer T.Text FilterFunc
 -- Useful for making clean 'Target's. Use sparingly.
 data CommandGatherer = CommandGatherer (IO ())
 
+-- Horrible.
 instance Serialize.Serialize T.Text where
   put s = Serialize.putListOf Serialize.put $ T.unpack s
   get = liftM T.pack $ Serialize.getListOf Serialize.get
-

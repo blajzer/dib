@@ -7,6 +7,7 @@ module Dib.Target(
   Target(Target),
   addDependency,
   addDependencies,
+  getDependencies,
   makePhonyTarget,
   makeCommandTarget,
   targetDepChecksum
@@ -25,9 +26,13 @@ import qualified Data.Text.Encoding as TE
 addDependency :: Target -> Target -> Target
 addDependency (Target name checksum deps stages gatherers) newDep = Target name checksum (newDep : deps) stages gatherers
 
--- | Adds a a dependency on a list of 'Target's.
+-- | Adds a dependency on a list of 'Target's.
 addDependencies :: Target -> [Target] -> Target
 addDependencies (Target name checksum deps stages gatherers) newDeps = Target name checksum (newDeps ++ deps) stages gatherers
+
+-- | Gets dependencies of a 'Target'.
+getDependencies :: Target -> [Target]
+getDependencies (Target _ _ deps _ _) = deps
 
 -- | Makes a 'Target' that doesn't build anything but can be used as a meta
 -- 'Target', i.e. the "all" target in make.
