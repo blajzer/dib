@@ -37,7 +37,7 @@ changeExt path = T.append (T.dropWhileEnd (/='.') path)
 
 --TODO: move to a utility module and factor out of C builder
 handleExitCode :: ExitCode -> T.Text -> String -> IO (Either SrcTransform T.Text)
-handleExitCode (ExitSuccess) t _ = return $ Left $ OneToOne t ""
+handleExitCode ExitSuccess t _ = return $ Left $ OneToOne t ""
 handleExitCode (ExitFailure _) _ e = return $ Right $ T.pack (show e)
 
 -- | The 'makeSimpleTarget' function generates a target.

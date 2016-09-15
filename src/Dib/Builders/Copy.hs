@@ -31,5 +31,5 @@ remapFile _ _ _ = error "Unhandled SrcTransform"
 -- It takes a name, a source directory, destination directory, and gather filter.
 makeCopyTarget :: T.Text -> T.Text -> T.Text -> FilterFunc -> [T.Text] -> Target
 makeCopyTarget name src dest f extraDeps =
-  let stage = Stage "copy" (map $ remapFile (T.unpack src) (T.unpack dest)) return extraDeps copyFunc 
-  in Target name (\_ -> 0) [] [stage] [makeFileTreeGatherer src f]
+  let stage = Stage "copy" (map $ remapFile (T.unpack src) (T.unpack dest)) return extraDeps copyFunc
+  in Target name (const 0) [] [stage] [makeFileTreeGatherer src f]

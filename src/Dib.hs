@@ -84,6 +84,7 @@ import Dib.Gatherers
 import Dib.Target
 import Dib.Types
 import Control.Concurrent
+import Control.Monad
 import Control.Monad.State as S
 import qualified Data.ByteString as B
 import qualified Data.Digest.CRC32 as Hash
@@ -135,8 +136,8 @@ dib targets = do
       saveDatabase (getTargetTimestampDB s) (getChecksumDB s) (getTargetChecksumDB s)
       dbSaveEnd <- getCurrentTime
 
-      putStrLn $ "DB load/save took " ++ (show $ diffUTCTime dbLoadEnd dbLoadStart) ++ "/" ++ (show $ diffUTCTime dbSaveEnd dbSaveStart) ++ " seconds."
-      putStrLn $ "Build took " ++ (show $ diffUTCTime endTime startTime) ++ " seconds."
+      putStrLn $ "DB load/save took " ++ show (diffUTCTime dbLoadEnd dbLoadStart) ++ "/" ++ show (diffUTCTime dbSaveEnd dbSaveStart) ++ " seconds."
+      putStrLn $ "Build took " ++ show (diffUTCTime endTime startTime) ++ " seconds."
       return ()
 
 gatherAllTargetsInternal :: [Target] -> Set.Set Target -> Set.Set Target
@@ -149,7 +150,7 @@ gatherAllTargets :: [Target] -> [Target]
 gatherAllTargets t =
 	let allTargets = Set.toList $ gatherAllTargetsInternal t Set.empty
 	    targetsMinusInitial = L.filter (\x -> x /= head t) allTargets
-	in (head t) : targetsMinusInitial
+	in head t : targetsMinusInitial
 
 extractVarsFromArgs :: [String] -> ArgDict
 extractVarsFromArgs args = L.foldl' extractVarsFromArgsInternal Map.empty $ map (L.break (== '=')) args
@@ -262,7 +263,7 @@ partitionMappings :: [SrcTransform] -> [T.Text] -> Bool -> BuildM ([SrcTransform
 partitionMappings files extraDeps force = do
   s <- get
   extraDepsChanged <- liftIO $ hasSrcChanged (getTimestampDB s) extraDeps
-  if force || extraDepsChanged then do
+  if force || extraDepsChanged then
       return (files, [])
     else do
       shouldBuild <- liftIO $ mapM (shouldBuildMapping (getTimestampDB s) (getChecksumDB s)) files
@@ -270,16 +271,15 @@ partitionMappings files extraDeps force = do
       let (a, b) = L.partition fst paired
       return (map snd a, map snd b)
 
-
 (<||>) :: IO Bool -> IO Bool -> IO Bool
 (<||>) = liftM2 (||)
 
 -- function for filtering FileMappings based on them already being taken care of
 shouldBuildMapping :: TimestampDB -> ChecksumDB -> SrcTransform -> IO Bool
-shouldBuildMapping t c (OneToOne s d) = hasSrcChanged t [s] <||> hasChecksumChanged c [s] [d] <||> liftM not (D.doesFileExist $ T.unpack d)
-shouldBuildMapping t c (OneToMany s ds) = hasSrcChanged t [s] <||> hasChecksumChanged c [s] ds  <||> liftM (not.and) (mapM (D.doesFileExist.T.unpack) ds)
-shouldBuildMapping t c (ManyToOne ss d) = hasSrcChanged t ss <||> hasChecksumChanged c ss [d]  <||> liftM not (D.doesFileExist $ T.unpack d)
-shouldBuildMapping t c (ManyToMany ss ds) = hasSrcChanged t ss <||> hasChecksumChanged c ss ds  <||> liftM (not.and) (mapM (D.doesFileExist.T.unpack) ds)
+shouldBuildMapping t c (OneToOne s d) = hasSrcChanged t [s] <||> hasChecksumChanged c [s] [d] <||> fmap not (D.doesFileExist $ T.unpack d)
+shouldBuildMapping t c (OneToMany s ds) = hasSrcChanged t [s] <||> hasChecksumChanged c [s] ds  <||> fmap (not.and) (mapM (D.doesFileExist.T.unpack) ds)
+shouldBuildMapping t c (ManyToOne ss d) = hasSrcChanged t ss <||> hasChecksumChanged c ss [d]  <||> fmap not (D.doesFileExist $ T.unpack d)
+shouldBuildMapping t c (ManyToMany ss ds) = hasSrcChanged t ss <||> hasChecksumChanged c ss ds  <||> fmap (not.and) (mapM (D.doesFileExist.T.unpack) ds)
 
 hasSrcChanged :: TimestampDB -> [T.Text] -> IO Bool
 hasSrcChanged m f = let filesInMap = zip f $ map (`Map.lookup` m) f
@@ -349,7 +349,7 @@ runTargetInternal t@(Target name hashFunc _ stages gatherers) = do
   buildState <- get
   let tcdb = getTargetChecksumDB buildState
   let checksum = hashFunc t
-  let forceRebuild = checksum /= (Map.findWithDefault 0 name tcdb)
+  let forceRebuild = checksum /= Map.findWithDefault 0 name tcdb
   gatheredFiles <- liftIO $ runGatherers gatherers
   let srcTransforms = map (flip OneToOne "") gatheredFiles
   liftIO $ putStrLn $ "==== Target: \"" ++ T.unpack name ++ "\""
@@ -404,10 +404,10 @@ stageHelper f m i r = do
   resultMVar <- liftIO $ newMVar (r, []) -- (overall result, database thunks)
   queueMVar <- liftIO $ newMVar i
   threadCountMVar <- liftIO $ newMVar m
-  if null i then do
+  if null i then
       return r
     else do
-      liftIO $ mapM_ forkIO (take m $ repeat $ workerThreadFunc f queueMVar resultMVar finalResultMVar threadCountMVar)
+      liftIO $ replicateM_ m (workerThreadFunc f queueMVar resultMVar finalResultMVar threadCountMVar)
       result <- liftIO $ takeMVar finalResultMVar
       sequence_ $ snd result
       return $ fst result
@@ -453,7 +453,7 @@ updateDatabaseHelper srcFiles destFiles = do
   put $ putChecksumDB (putPendingDBUpdates buildstate updatedPDBU) updatedCDB
   return ()
 
-updateDatabaseExtraDeps :: (Either [SrcTransform] T.Text) -> [T.Text] -> BuildM (Either [SrcTransform] T.Text)
+updateDatabaseExtraDeps :: Either [SrcTransform] T.Text -> [T.Text] -> BuildM (Either [SrcTransform] T.Text)
 updateDatabaseExtraDeps result@(Right _) _ = return result
 updateDatabaseExtraDeps result@(Left _) deps = do
   buildstate <- get

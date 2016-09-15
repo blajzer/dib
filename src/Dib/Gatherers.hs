@@ -132,7 +132,7 @@ matchExtensions exts file = foldl' foldFunc False exts
 
 -- | Filter function that returns files with a given extension that don't match exclusion rules.
 matchExtensionExcluded :: T.Text -> [T.Text -> Bool] -> FilterFunc
-matchExtensionExcluded ext rules file = (T.isSuffixOf ext file) && (not.or $ map (\r -> r file) rules)
+matchExtensionExcluded ext rules file = T.isSuffixOf ext file && (not.or $ map (\r -> r file) rules)
 
 -- | Filter function that returns files that match any of a list of extensions, but don't match the exclusion rules.
 matchExtensionsExcluded :: [T.Text] -> [T.Text -> Bool] -> FilterFunc

@@ -37,11 +37,11 @@ getDependencies (Target _ _ deps _ _) = deps
 -- | Makes a 'Target' that doesn't build anything but can be used as a meta
 -- 'Target', i.e. the "all" target in make.
 makePhonyTarget :: T.Text -> [Target] -> Target
-makePhonyTarget name deps = Target name (\_ -> 0) deps [] []
+makePhonyTarget name deps = Target name (const 0) deps [] []
 
 -- | Makes a 'Target' that runs an arbitrary 'IO' action.
 makeCommandTarget :: T.Text -> [Target] -> IO () -> Target
-makeCommandTarget name deps command = Target name (\_ -> 0) deps [] [makeCommandGatherer command]
+makeCommandTarget name deps command = Target name (const 0) deps [] [makeCommandGatherer command]
 
 -- | Computes a checksum from the direct dependencies of a target
 targetDepChecksum :: Target -> Word32

@@ -186,19 +186,19 @@ remapBinFile (ObjAndBinDirs _ d) f = d `T.snoc` F.pathSeparator `T.append` f
 -- | Given a 'CTargetInfo', will make the directories required to build the project.
 makeBuildDirs :: CTargetInfo -> IO ()
 makeBuildDirs info = do
-  let helper (InPlace) = return ()
+  let helper InPlace = return ()
       helper (BuildDir d) = D.createDirectoryIfMissing True (T.unpack d)
       helper (ObjAndBinDirs d d2) = D.createDirectoryIfMissing True (T.unpack d) >> D.createDirectoryIfMissing True (T.unpack d2)
   helper (outputLocation info)
   return ()
 
 excludeFiles :: [T.Text] -> T.Text -> Bool
-excludeFiles excl file = L.any (\e -> e `T.isSuffixOf` file) excl
+excludeFiles excl file = L.any (`T.isSuffixOf` file) excl
 
 -- | Given a 'CTargetInfo', produces a 'Target'
 makeCTarget :: CTargetInfo -> Target
 makeCTarget info =
-  let includeDirString = (includeOption info) ++ (L.intercalate (" " ++ includeOption info) $ includeDirs info)
+  let includeDirString = includeOption info ++ L.intercalate (" " ++ includeOption info) (includeDirs info)
       makeBuildString s t = compiler info ++ " " ++ inFileOption info ++ " " ++ T.unpack s ++ " " ++ outFileOption info ++ " " ++ T.unpack t ++ " " ++ includeDirString ++ " "++ compileFlags info
       makeLinkString ss t = linker info ++ " " ++ unwords (map T.unpack ss) ++ " " ++ outFileOption info ++ " " ++ T.unpack t ++ " " ++ linkFlags info
       makeArchiveString ss t = archiver info ++ " " ++ archiverFlags info ++ " " ++ T.unpack t ++ " " ++ unwords (map T.unpack ss)
@@ -236,7 +236,7 @@ changeExt newExt b (OneToOne l _) = OneToOne l $ remapObjFile b $ T.append (T.dr
 changeExt _ _ _ = undefined
 
 handleExitCode :: ExitCode -> T.Text -> String -> IO (Either SrcTransform T.Text)
-handleExitCode (ExitSuccess) t _ = return $ Left $ OneToOne t ""
+handleExitCode ExitSuccess t _ = return $ Left $ OneToOne t ""
 handleExitCode (ExitFailure _) _ e = return $ Right $ T.pack (show e)
 
 combineTransforms :: T.Text -> [SrcTransform] -> [SrcTransform]
