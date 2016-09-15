@@ -171,10 +171,17 @@ addEnvToDict m vars = do
   let valuesToAdd = map (\(x, y) -> (x, fromMaybe y $ L.lookup x env)) vars
   return $ L.foldl' (\a (x, y) -> Map.insert x y a) m valuesToAdd
 
+removeVarsFromArgs :: [String] -> [String]
+removeVarsFromArgs args = L.foldl' removeVarsFromArgsInternal [] $ map (L.break (== '=')) args
+  where
+    removeVarsFromArgsInternal e (t, []) = e ++ [t]
+    removeVarsFromArgsInternal e (_, _:_) = e
+
 parseArgs :: [String] -> [Target] -> Int -> BuildArgs
 parseArgs args targets numJobs =
-  let argsLen = length args
-      target = if argsLen > 0 then T.pack.head $ args else T.pack.show.head $ targets
+  let cleanArgs = removeVarsFromArgs args
+      argsLen = length cleanArgs
+      target = if argsLen > 0 then T.pack.head $ cleanArgs else T.pack.show.head $ targets
   in BuildArgs { buildTarget = target, maxBuildJobs = numJobs }
 
 -- | Makes a function that can be used to look up a value in the argument
