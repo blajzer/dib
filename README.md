@@ -68,7 +68,7 @@ Arguments can be passed on the command line to the dib executable. These can be
 retrieved in the build with `getArgDict`. The user is also free to use environment variables
 as parameter input.
 
-The invocation should look like the following: `dib <target> <key>=<value> <key>=<value> ...`.
+The invocation might look like the following: `dib <target> <key>=<value> <key>=<value> ...`.
 Please note that there are no spaces between the keys and values. Quoted strings are
-untested and unlikely to work correctly.  A `Target` must currently be specified
-and must be the first argument. This requirement will be relaxed in the future.
+untested and unlikely to work correctly. The `Target` is optional, and can appear
+anywhere in the command. If no `Target` is specified, the default will be used.
