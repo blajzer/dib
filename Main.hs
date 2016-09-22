@@ -6,10 +6,12 @@
 -- scripts quite a bit easier.
 module Main where
 
+import Paths_dib (version)
 import GHC.IO.Exception
 import Control.Monad
 import Data.Maybe
 import Data.Time.Clock.POSIX
+import Data.Version (showVersion)
 import System.Process (system)
 import qualified System.Directory as D
 import System.Environment (getArgs)
@@ -37,6 +39,10 @@ tmpDibScript = "dib-tmp.hs"
 -- | The file that stores the timestamp for dib.hs
 timestampFile :: String
 timestampFile = ".dib/timestamp"
+
+-- | The file that stores the version of the dib library
+versionFile :: String
+versionFile = ".dib/version"
 
 -- | The command line for building dib.hs
 buildString :: String
@@ -124,18 +130,26 @@ checkDibTimestamps = do
   if dibUnixExists || dibWinExists then do
       calTimeStr <- getDibCalendarTimeStr
       storedCalTime <- getStoredCalTime
-      return $ calTimeStr /= storedCalTime
+      storedVersion <- getStoredVersion
+      let versionStr = showVersion version
+      return $ calTimeStr /= storedCalTime || versionStr /= storedVersion
     else
       return True
 
 getStoredCalTime :: IO String
-getStoredCalTime = do
-  timestampFileExists <- D.doesFileExist timestampFile
-  if timestampFileExists then do
-      tsFile <- openFile timestampFile ReadMode
-      timestampStr <- hGetLine tsFile
-      hClose tsFile
-      return timestampStr
+getStoredCalTime = getStoredTokenFileContents timestampFile
+
+getStoredVersion :: IO String
+getStoredVersion = getStoredTokenFileContents versionFile
+
+getStoredTokenFileContents :: String -> IO String
+getStoredTokenFileContents f = do
+  fileExists <- D.doesFileExist f
+  if fileExists then do
+      file <- openFile f ReadMode
+      tokenStr <- hGetLine file
+      hClose file
+      return tokenStr
     else
       return ""
 
@@ -151,10 +165,16 @@ rebuild needToRebuild =
       exitCode <- system buildString
       D.setCurrentDirectory ".."
       processExitCode exitCode
+      
       calTimeStr <- getDibCalendarTimeStr
       tsFile <- openFile timestampFile WriteMode
       hPutStr tsFile calTimeStr
       hClose tsFile
+      
+      let versionStr = showVersion version
+      verFile <- openFile versionFile WriteMode
+      hPutStr verFile versionStr
+      hClose verFile 
 
 requoteArg :: String -> String
 requoteArg arg = requoteArgInternal arg False
