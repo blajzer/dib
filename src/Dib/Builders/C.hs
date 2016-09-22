@@ -26,7 +26,6 @@ import System.Directory as D
 import System.Exit
 import System.FilePath as F
 
-import qualified Data.ByteString.UTF8 as BS
 import qualified Data.Digest.CRC32 as Hash
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
@@ -42,26 +41,26 @@ data CTargetInfo = CTargetInfo {
   -- | A 'BuildLocation' that defines where the object and executable files go.
   outputLocation :: BuildLocation,
   -- | The compiler executable.
-  compiler :: String,
+  compiler :: T.Text,
   -- | The linker executable.
-  linker :: String,
+  linker :: T.Text,
   -- | The archiver executable.
-  archiver :: String,
+  archiver :: T.Text,
   -- | The command line option for the input file.
-  inFileOption :: String,
+  inFileOption :: T.Text,
   -- | The command line option for the output file.
-  outFileOption :: String,
+  outFileOption :: T.Text,
   -- | The compiler's include option
-  includeOption :: String,
+  includeOption :: T.Text,
   -- | Compiler flags.
-  compileFlags :: String,
+  compileFlags :: T.Text,
   -- | Linker flags.
-  linkFlags :: String,
+  linkFlags :: T.Text,
   -- | Archiver flags.
-  archiverFlags :: String,
+  archiverFlags :: T.Text,
   -- | A list of directories where include files can be found. Used for
   -- dependency scanning and automatically appended to the compile line.
-  includeDirs :: [String],
+  includeDirs :: [T.Text],
   -- | Extra compilation dependencies.
   extraCompileDeps :: [T.Text],
   -- | Extra linking dependencies.
@@ -75,16 +74,9 @@ data CTargetInfo = CTargetInfo {
 -- | Given a 'CTargetInfo' and a 'Target', produces a checksum
 cTargetHash :: CTargetInfo -> Target -> Word32
 cTargetHash info _ =
-  let srcDirHash = TE.encodeUtf8 $ "srcDir^" `T.append` srcDir info
-      textHash = TE.encodeUtf8 $ T.intercalate "^" [
-        "extraCompileDeps",
-        T.intercalate "^" $ extraCompileDeps info,
-        "extraLinkDeps",
-        T.intercalate "^" $ extraLinkDeps info,
-		"exclusions",
-		T.intercalate "^" $ exclusions info
-        ]
-      stringHash = BS.fromString $ intercalate "^" [
+  let textHash = TE.encodeUtf8 $ T.intercalate "^" [
+        "srcDir",
+        srcDir info,
         "compiler",
         compiler info,
         "linker",
@@ -95,8 +87,8 @@ cTargetHash info _ =
         inFileOption info,
         "outFileOption",
         outFileOption info,
-		"includeOption",
-		includeOption info,
+        "includeOption",
+        includeOption info,
         "compileFlags",
         compileFlags info,
         "linkFlags",
@@ -104,11 +96,18 @@ cTargetHash info _ =
         "archiverFlags",
         archiverFlags info,
         "includeDirs",
-        intercalate "^" $ includeDirs info,
+        T.intercalate "^^" $ includeDirs info,
+        "extraCompileDeps",
+        T.intercalate "^^" $ extraCompileDeps info,
+        "extraLinkDeps",
+        T.intercalate "^^" $ extraLinkDeps info,
+        "exclusions",
+        T.intercalate "^^" $ exclusions info,
         "staticLibrary",
         if staticLibrary info then "True" else "False"
         ]
-  in Hash.crc32Update (Hash.crc32Update (Hash.crc32 srcDirHash) stringHash) textHash
+
+  in Hash.crc32 textHash
 
 -- | The data type for specifying where built files end up.
 data BuildLocation =
@@ -198,10 +197,10 @@ excludeFiles excl file = L.any (`T.isSuffixOf` file) excl
 -- | Given a 'CTargetInfo', produces a 'Target'
 makeCTarget :: CTargetInfo -> Target
 makeCTarget info =
-  let includeDirString = includeOption info ++ L.intercalate (" " ++ includeOption info) (includeDirs info)
-      makeBuildString s t = compiler info ++ " " ++ inFileOption info ++ " " ++ T.unpack s ++ " " ++ outFileOption info ++ " " ++ T.unpack t ++ " " ++ includeDirString ++ " "++ compileFlags info
-      makeLinkString ss t = linker info ++ " " ++ unwords (map T.unpack ss) ++ " " ++ outFileOption info ++ " " ++ T.unpack t ++ " " ++ linkFlags info
-      makeArchiveString ss t = archiver info ++ " " ++ archiverFlags info ++ " " ++ T.unpack t ++ " " ++ unwords (map T.unpack ss)
+  let includeDirString = includeOption info `T.append` T.intercalate (" " `T.append` includeOption info) (includeDirs info)
+      makeBuildString s t = T.unpack $ T.concat [compiler info, " ", inFileOption info, " ", s, " ", outFileOption info, " ", t, " ", includeDirString, " ", compileFlags info]
+      makeLinkString ss t = T.unpack $ T.concat [linker info, " ", T.unwords ss, " ", outFileOption info, " ", t, " ", linkFlags info]
+      makeArchiveString ss t = T.unpack $ T.concat [archiver info, " ", archiverFlags info, " ", t, " ", T.unwords ss]
 
       buildCmd (ManyToOne ss t) = do
         let sourceFile = head ss
@@ -226,7 +225,7 @@ makeCTarget info =
       archiveCmd _ = return $ Right "Unhandled SrcTransform."
 
       buildDirGatherer = makeCommandGatherer $ makeBuildDirs info
-      cppStage = Stage "compile" (map (changeExt "o" (outputLocation info))) (cDepScanner (includeDirs info)) (extraCompileDeps info) buildCmd
+      cppStage = Stage "compile" (map (changeExt "o" (outputLocation info))) (cDepScanner (map T.unpack $ includeDirs info)) (extraCompileDeps info) buildCmd
       linkStage = Stage "link" (combineTransforms (remapBinFile (outputLocation info) $ outputName info)) return (extraLinkDeps info) linkCmd
       archiveStage = Stage "archive" (combineTransforms (remapBinFile (outputLocation info) $ outputName info)) return [] archiveCmd
   in Target (targetName info) (cTargetHash info) [] [cppStage, if staticLibrary info then archiveStage else linkStage] [buildDirGatherer, makeFileTreeGatherer (srcDir info) (matchExtensionsExcluded [".cpp", ".c"] [excludeFiles $ exclusions info])]
