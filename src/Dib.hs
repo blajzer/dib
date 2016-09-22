@@ -142,15 +142,15 @@ dib targets = do
 
 gatherAllTargetsInternal :: [Target] -> Set.Set Target -> Set.Set Target
 gatherAllTargetsInternal (t:ts) s =
-	let (recurse, newSet) = if Set.notMember t s then (True, Set.insert t s) else (False, s)
-	in if recurse then gatherAllTargetsInternal ts (gatherAllTargetsInternal (getDependencies t) newSet) else gatherAllTargetsInternal ts newSet
+  let (recurse, newSet) = if Set.notMember t s then (True, Set.insert t s) else (False, s)
+  in if recurse then gatherAllTargetsInternal ts (gatherAllTargetsInternal (getDependencies t) newSet) else gatherAllTargetsInternal ts newSet
 gatherAllTargetsInternal [] s = s
 
 gatherAllTargets :: [Target] -> [Target]
 gatherAllTargets t =
-	let allTargets = Set.toList $ gatherAllTargetsInternal t Set.empty
-	    targetsMinusInitial = L.filter (\x -> x /= head t) allTargets
-	in head t : targetsMinusInitial
+  let allTargets = Set.toList $ gatherAllTargetsInternal t Set.empty
+      targetsMinusInitial = L.filter (\x -> x /= head t) allTargets
+  in head t : targetsMinusInitial
 
 extractVarsFromArgs :: [String] -> ArgDict
 extractVarsFromArgs args = L.foldl' extractVarsFromArgsInternal Map.empty $ map (L.break (== '=')) args
