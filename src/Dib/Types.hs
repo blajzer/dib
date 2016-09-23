@@ -1,5 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, ExistentialQuantification, OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# OPTIONS_HADDOCK hide, prune #-}
 
 -- Copyright (c) 2010-2016 Brett Lajzer
 -- See LICENSE for license information.

@@ -69,12 +69,7 @@
 --
 module Dib (
   SrcTransform(OneToOne, OneToMany, ManyToOne, ManyToMany),
-  BuildState,
   dib,
-  filterMappings,
-  getTimestampDB,
-  putTimestampDB,
-  targetIsUpToDate,
   getArgDict,
   addEnvToDict,
   makeArgDictLookupFunc
@@ -253,10 +248,6 @@ getMaxBuildJobs (BuildState a _ _ _ _ _ _) = maxBuildJobs a
 -- | Returns whether or not a target is up to date, based on the current build state.
 targetIsUpToDate :: BuildState -> Target -> Bool
 targetIsUpToDate (BuildState _ _ _ _ _ s _) t = Set.member t s
-
--- | Filters out up-to-date mappings
-filterMappings :: [SrcTransform] -> BuildM [SrcTransform]
-filterMappings files = get >>= \(BuildState _ t tdb cdb _ _ _) -> liftIO $ filterM (shouldBuildMapping (Map.findWithDefault Map.empty t tdb) cdb) files
 
 -- | Partitions out up-to-date mappings
 partitionMappings :: [SrcTransform] -> [T.Text] -> Bool -> BuildM ([SrcTransform], [SrcTransform])
