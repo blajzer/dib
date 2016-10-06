@@ -41,15 +41,35 @@
 -- through the use of @dib --init@. Run the dib executable with no options for more
 -- information on the available templates.
 --
--- The most trivial, do nothing build script looks like the following:
---
+-- An example of using the C Builder to build an executable called "myProject" with
+-- its source code in the "src/" directory is as follows:
+-- 
 -- @
 -- module Main where
+-- 
 -- import Dib
---
--- targets = []
+-- import Dib.Builders.C
+-- import qualified Data.Text as T
+-- 
+-- projectInfo = defaultGCCConfig {
+--   outputName = "myProject",
+--   targetName = "myProject",
+--   srcDir = "src",
+--   compileFlags = "",
+--   linkFlags = "",
+--   outputLocation = ObjAndBinDirs "obj" ".",
+--   includeDirs = ["src"]
+-- }
+-- 
+-- project = makeCTarget projectInfo
+-- clean = makeCleanTarget projectInfo
+-- 
+-- targets = [project, clean]
+-- 
 -- main = dib targets
 -- @
+-- 
+-- This was generated with @dib --init c myProject gcc src@. 
 --
 -- A build script is expected to declare the available 'Target's and then pass them
 -- to the 'dib' function. Only the top-level 'Target's need to be passed to 'dib';
