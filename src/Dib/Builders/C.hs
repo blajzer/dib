@@ -168,7 +168,7 @@ defaultGCCConfig = emptyConfig {
 -- | A default configuration for g++.
 defaultGXXConfig :: CTargetInfo
 defaultGXXConfig = defaultGCCConfig {
-  compiler = "g++",
+  compiler = "gcc",
   linker = "g++"
   }
 
