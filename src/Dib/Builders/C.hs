@@ -3,7 +3,7 @@
 
 -- | A builder for C/C++ code.
 module Dib.Builders.C (
-  CTargetInfo(CTargetInfo, outputName, targetName, srcDir, outputLocation, compiler, linker, archiver, inFileOption, outFileOption, compileFlags, linkFlags, archiverFlags, includeDirs, extraCompileDeps, extraLinkDeps, exclusions, staticLibrary),
+  CTargetInfo(CTargetInfo, outputName, targetName, srcDir, outputLocation, compiler, linker, archiver, inFileOption, outFileOption, commonCompileFlags, cCompileFlags, cxxCompileFlags, linkFlags, archiverFlags, includeDirs, extraCompileDeps, extraLinkDeps, exclusions, staticLibrary),
   BuildLocation(InPlace, BuildDir, ObjAndBinDirs),
   makeCTarget,
   makeCleanTarget,
@@ -52,8 +52,12 @@ data CTargetInfo = CTargetInfo {
   outFileOption :: T.Text,
   -- | The compiler's include option
   includeOption :: T.Text,
-  -- | Compiler flags.
-  compileFlags :: T.Text,
+  -- | Common compiler flags.
+  commonCompileFlags :: T.Text,
+  -- | C compiler flags.
+  cCompileFlags :: T.Text,
+  -- | C++ compiler flags.
+  cxxCompileFlags :: T.Text,
   -- | Linker flags.
   linkFlags :: T.Text,
   -- | Archiver flags.
@@ -89,8 +93,12 @@ cTargetHash info _ =
         outFileOption info,
         "includeOption",
         includeOption info,
-        "compileFlags",
-        compileFlags info,
+        "commonCompileFlags",
+        commonCompileFlags info,
+        "cCompileFlags",
+        cCompileFlags info,
+        "cxxCompileFlags",
+        cxxCompileFlags info,
         "linkFlags",
         linkFlags info,
         "archiverFlags",
@@ -133,7 +141,9 @@ emptyConfig = CTargetInfo {
   inFileOption = "",
   outFileOption = "",
   includeOption = "",
-  compileFlags = "",
+  commonCompileFlags = "",
+  cCompileFlags = "",
+  cxxCompileFlags = "",
   linkFlags = "",
   archiverFlags = "",
   includeDirs = [],
@@ -194,11 +204,14 @@ makeBuildDirs info = do
 excludeFiles :: [T.Text] -> T.Text -> Bool
 excludeFiles excl file = L.any (`T.isSuffixOf` file) excl
 
+getCorrectCompileFlags :: CTargetInfo -> T.Text -> T.Text
+getCorrectCompileFlags info s = if ".c" `T.isSuffixOf` s then cCompileFlags info else cxxCompileFlags info
+
 -- | Given a 'CTargetInfo', produces a 'Target'
 makeCTarget :: CTargetInfo -> Target
 makeCTarget info =
   let includeDirString = includeOption info `T.append` T.intercalate (" " `T.append` includeOption info) (includeDirs info)
-      makeBuildString s t = T.unpack $ T.concat [compiler info, " ", inFileOption info, " ", s, " ", outFileOption info, " ", t, " ", includeDirString, " ", compileFlags info]
+      makeBuildString s t = T.unpack $ T.concat [compiler info, " ", inFileOption info, " ", s, " ", outFileOption info, " ", t, " ", includeDirString, " ", commonCompileFlags info, " ", getCorrectCompileFlags info s]
       makeLinkString ss t = T.unpack $ T.concat [linker info, " ", T.unwords ss, " ", outFileOption info, " ", t, " ", linkFlags info]
       makeArchiveString ss t = T.unpack $ T.concat [archiver info, " ", archiverFlags info, " ", t, " ", T.unwords ss]
 
