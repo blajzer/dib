@@ -189,7 +189,8 @@ buildAndRunDib args = do
   D.createDirectoryIfMissing False ".dib"
   needToRebuild <- checkDibTimestamps
   rebuild needToRebuild
-  system $ correctExe ++ " +RTS -N -RTS " ++ args
+  let quotes = if os =="mingw32" then "\"\"" else "" 
+  system $ quotes ++ correctExe ++ quotes ++ " +RTS -N -RTS " ++ args
 
 shouldHandleInit :: [String] -> Bool
 shouldHandleInit args = not (null args) && head args == "--init"
