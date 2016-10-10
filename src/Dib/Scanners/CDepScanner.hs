@@ -13,6 +13,7 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified System.Directory as Dir
 import qualified System.FilePath as F
+import Control.Applicative
 import Control.Monad.State.Lazy
 
 data Dependency = Dependency String String
