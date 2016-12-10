@@ -1,5 +1,5 @@
 name:           dib
-version:        0.6.0
+version:        0.6.1
 cabal-version:  >= 1.6
 category:		Development
 build-type:     Simple
@@ -17,7 +17,7 @@ source-repository head
 source-repository this
   type: git
   location: https://github.com/blajzer/dib.git
-  tag: 0.5.0
+  tag: 0.6.1
 
 library
   build-depends:   base >= 4.4 && < 4.10, text, containers, mtl, directory, time, process, filepath, cereal, bytestring, digest
