@@ -9,7 +9,7 @@
 -- not export any of these types directly; other modules do.
 module Dib.Types where
 
-import Control.Applicative
+import Control.Applicative()
 import Control.Monad.State as S
 import qualified Data.Map as Map
 import qualified Data.Serialize as Serialize
