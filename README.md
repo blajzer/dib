@@ -18,7 +18,7 @@ Run `cabal haddock` to build the documentation, which is guaranteed to be more
 up-to-date than this README.
 
 # Concepts
-* __Target__ - The most granluar unit of a build. Represents a desired outcome:
+* __Target__ - The most granular unit of a build. Represents a desired outcome:
   e.g. an executable, a folder of files, etc... Contains `Stage`s, which do
   the actual work. Somewhat unfortunately, a `Target`'s name is its only identifier
   in the cache database, so debug/release and multiplatform `Target` variants
