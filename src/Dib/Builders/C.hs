@@ -1,4 +1,4 @@
--- Copyright (c) 2010-2016 Brett Lajzer
+-- Copyright (c) 2010-2018 Brett Lajzer
 -- See LICENSE for license information.
 
 -- | A builder for C/C++ code.
@@ -276,4 +276,4 @@ makeCleanTarget info =
       cleanStage = Stage "clean" id return [] cleanCmd
       objectGatherer = makeFileTreeGatherer (objDir $ outputLocation info) (matchExtension ".o")
       programGatherer = makeSingleFileGatherer (programFile $ outputLocation info)
-  in Target ("clean-" `T.append` targetName info) (const 0) [] [cleanStage] [objectGatherer, programGatherer]
+  in Target ("clean-" <> targetName info) (const 0) [] [cleanStage] [objectGatherer, programGatherer]
