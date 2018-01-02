@@ -13,7 +13,7 @@ import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified System.Directory as Dir
 import qualified System.FilePath as F
-import Control.Applicative
+import Control.Applicative()
 import Control.Monad.State.Lazy
 
 data Dependency = Dependency String String
@@ -150,4 +150,3 @@ cDepScanner :: [FilePath] -> SrcTransform -> IO SrcTransform
 cDepScanner includeDirs (OneToOne i o) = getDepsForFile includeDirs (T.unpack i) >>= \d -> return $ ManyToOne (i:d) o
 cDepScanner includeDirs (OneToMany i o) = getDepsForFile includeDirs (T.unpack i) >>= \d -> return $ ManyToMany (i:d) o
 cDepScanner _ _ = error "Unimplemented. Implement this if it is a valid relationship."
-
