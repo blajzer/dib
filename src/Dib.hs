@@ -92,7 +92,8 @@ module Dib (
   dib,
   getArgDict,
   addEnvToDict,
-  makeArgDictLookupFunc
+  makeArgDictLookupFunc,
+  makeArgDictLookupFuncChecked
   ) where
 
 import Dib.Gatherers
@@ -222,6 +223,19 @@ parseArgs args targets numJobs =
 -- dictionary, returning a default value if the argument does not exist.
 makeArgDictLookupFunc :: String -> String -> ArgDict -> String
 makeArgDictLookupFunc arg defVal dict = fromMaybe defVal $ Map.lookup arg dict
+
+-- | Makes a function that can be used to look up a value in the argument
+-- dictionary, returning a default value if the argument does not exist, and
+-- checking success against a list of valid values.
+-- Returns an error string on Left, and success string on Right.
+makeArgDictLookupFuncChecked :: String -> String -> [String] -> ArgDict -> Either String String
+makeArgDictLookupFuncChecked arg defVal validValues dict =
+    let partialResult = makeArgDictLookupFunc arg defVal dict
+        result = L.find (== partialResult) validValues
+    in if isJust result then
+        Right $ fromJust result
+      else
+        Left $ "ERROR: invalid value \"" ++ partialResult ++ "\" for argument \"" ++ arg ++ "\". Expected one of: [" ++ L.intercalate  ", " validValues ++ "]"
 
 printSeparator :: IO ()
 printSeparator = putStrLn "============================================================"
