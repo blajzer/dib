@@ -337,8 +337,9 @@ getChecksumPair s d =
       joinedDest = T.concat $ L.intersperse ":" d
   in (joinedDest, Hash.crc32 (TE.encodeUtf8 joinedSrc))
 
-buildFoldFunc :: Either [SrcTransform] T.Text -> Target -> BuildM (Either [SrcTransform] T.Text)
-buildFoldFunc (Left _) t@(Target name _ _ _ _) = do
+buildFoldFunc :: StageResults -> Target -> BuildM StageResults
+buildFoldFunc l@(Left _) _ = return l
+buildFoldFunc (Right _) t@(Target name _ _ _ _) = do
   buildState <- get
   let oldTargetName = getCurrentTargetName buildState
   put $ putCurrentTargetName buildState name
@@ -347,33 +348,31 @@ buildFoldFunc (Left _) t@(Target name _ _ _ _) = do
   put $ putCurrentTargetName newBuildState oldTargetName
   return result
 
-buildFoldFunc r@(Right _) _ = return r
+isRight :: Either a b -> Bool
+isRight (Right _) = True
+isRight _ = False
 
-isLeft :: Either a b -> Bool
-isLeft (Left _) = True
-isLeft _ = False
-
-runTarget :: Target -> BuildM (Either [SrcTransform] T.Text)
+runTarget :: Target -> BuildM StageResults
 runTarget t@(Target name _ deps _ _) = do
   buildState <- get
   let outdatedTargets = filter (not.targetIsUpToDate buildState) deps
-  depStatus <- foldM buildFoldFunc (Left []) outdatedTargets
-  if isLeft depStatus then do
+  depStatus <- foldM buildFoldFunc (Right []) outdatedTargets
+  if isRight depStatus then do
       result <- runTargetInternal t
       writePendingDBUpdates
       return result
     else
       buildFailFunc depStatus name
 
-buildFailFunc :: Either [SrcTransform] T.Text -> T.Text -> BuildM (Either [SrcTransform] T.Text)
-buildFailFunc (Right err) name = do
+buildFailFunc :: StageResults -> T.Text -> BuildM StageResults
+buildFailFunc (Left err) name = do
   liftIO printSeparator
   liftIO $ putStr $ "ERROR: Error building target \"" ++ T.unpack name ++ "\": "
   liftIO $ putStrLn $ T.unpack err
-  return $ Right ""
-buildFailFunc (Left _) _ = return $ Right ""
+  return $ Left ""
+buildFailFunc (Right _) _ = return $ Left ""
 
-runTargetInternal :: Target -> BuildM (Either [SrcTransform] T.Text)
+runTargetInternal :: Target -> BuildM StageResults
 runTargetInternal t@(Target name hashFunc _ stages gatherers) = do
   buildState <- get
   let tcdb = getTargetChecksumDB buildState
@@ -382,10 +381,10 @@ runTargetInternal t@(Target name hashFunc _ stages gatherers) = do
   gatheredFiles <- liftIO $ runGatherers gatherers
   let srcTransforms = map (flip OneToOne "") gatheredFiles
   liftIO $ putStrLn $ "==== Target: \"" ++ T.unpack name ++ "\""
-  stageResult <- foldM stageFoldFunc (Left srcTransforms) $ zip stages $ repeat forceRebuild
-  if isLeft stageResult then targetSuccessFunc t else buildFailFunc stageResult name
+  stageResult <- foldM stageFoldFunc (Right srcTransforms) $ zip stages $ repeat forceRebuild
+  if isRight stageResult then targetSuccessFunc t else buildFailFunc stageResult name
 
-targetSuccessFunc :: Target -> BuildM (Either [SrcTransform] T.Text)
+targetSuccessFunc :: Target -> BuildM StageResults
 targetSuccessFunc t@(Target name hashFunc _ _ _) = do
   buildState <- get
   let updatedTargets = Set.insert t $ getUpToDateTargets buildState
@@ -393,13 +392,13 @@ targetSuccessFunc t@(Target name hashFunc _ _ _) = do
   put $ putTargetChecksumDB (putUpToDateTargets buildState updatedTargets) updatedChecksums
   liftIO $ putStrLn $ "Successfully built target \"" ++ T.unpack name ++ "\""
   liftIO $ putStrLn ""
-  return $ Left []
+  return $ Right []
 
-stageFoldFunc :: Either [SrcTransform] T.Text -> (Stage, Bool) -> BuildM (Either [SrcTransform] T.Text)
-stageFoldFunc (Left t) (s, force) = runStage s force t
-stageFoldFunc r@(Right _) _ = return r
+stageFoldFunc :: StageResults -> (Stage, Bool) -> BuildM StageResults
+stageFoldFunc (Right t) (s, force) = runStage s force t
+stageFoldFunc l@(Left _) _ = return l
 
-workerThreadFunc :: (SrcTransform -> IO (Either SrcTransform T.Text)) -> MVar [SrcTransform] -> MVar (Either [SrcTransform] T.Text, [BuildM ()]) -> MVar (Either [SrcTransform] T.Text, [BuildM ()]) -> MVar Int -> IO ()
+workerThreadFunc :: (SrcTransform -> IO StageResult) -> MVar [SrcTransform] -> MVar (StageResults, [BuildM ()]) -> MVar (StageResults, [BuildM ()]) -> MVar Int -> IO ()
 workerThreadFunc sf q r f c = do
   queue <- takeMVar q
   if null queue then do
@@ -420,14 +419,14 @@ workerThreadFunc sf q r f c = do
       taskResult <- sf workItem
       let dbThunk = updateDatabase taskResult workItem
       resultAcc <- takeMVar r
-      let combine right@(Right _) _ = right
-          combine (Left ml) (Left v) = Left (v : ml)
-          combine (Left _) (Right v) = Right v
+      let combine left@(Left _) _ = left
+          combine (Right ml) (Right v) = Right (v : ml)
+          combine (Right _) (Left v) = Left v
       let newResultAcc = (\(res, thunks) -> (combine res taskResult, dbThunk : thunks)) resultAcc
       putMVar r newResultAcc
       workerThreadFunc sf q r f c
 
-stageHelper :: (SrcTransform -> IO (Either SrcTransform T.Text)) -> Int -> [SrcTransform] -> Either [SrcTransform] T.Text -> BuildM (Either [SrcTransform] T.Text)
+stageHelper :: (SrcTransform -> IO StageResult) -> Int -> [SrcTransform] -> StageResults -> BuildM StageResults
 stageHelper f m i r = do
   finalResultMVar <- liftIO newEmptyMVar
   resultMVar <- liftIO $ newMVar (r, []) -- (overall result, database thunks)
@@ -441,13 +440,13 @@ stageHelper f m i r = do
       sequence_ $ snd result
       return $ fst result
 
-runStage :: Stage -> Bool -> [SrcTransform] -> BuildM (Either [SrcTransform] T.Text)
+runStage :: Stage -> Bool -> [SrcTransform] -> BuildM StageResults
 runStage s@(Stage name _ _ extraDeps f) force m = do
   liftIO $ putStrLn $ "-- Stage: \"" ++ T.unpack name ++ "\""
   depScannedFiles <- liftIO $ processMappings s m
   (targetsToBuild, upToDateTargets) <- partitionMappings depScannedFiles extraDeps force
   bs <- get
-  result <- stageHelper f (getMaxBuildJobs bs) targetsToBuild (Left $ map transferUpToDateTarget upToDateTargets)
+  result <- stageHelper f (getMaxBuildJobs bs) targetsToBuild (Right $ map transferUpToDateTarget upToDateTargets)
   updateDatabaseExtraDeps result extraDeps
 
 -- These might not be quite correct. I guessed at what made sense.
@@ -463,11 +462,11 @@ processMappings (Stage _ t d _ _) m = do
   mapM d transMap
 
 updateDatabase :: Either l r -> SrcTransform -> BuildM ()
-updateDatabase (Right _) _ = return ()
-updateDatabase (Left _) (OneToOne s d) = updateDatabaseHelper [s] [d]
-updateDatabase (Left _) (OneToMany s ds) = updateDatabaseHelper [s] ds
-updateDatabase (Left _) (ManyToOne ss d) = updateDatabaseHelper ss [d]
-updateDatabase (Left _) (ManyToMany ss ds) = updateDatabaseHelper ss ds
+updateDatabase (Left _) _ = return ()
+updateDatabase (Right _) (OneToOne s d) = updateDatabaseHelper [s] [d]
+updateDatabase (Right _) (OneToMany s ds) = updateDatabaseHelper [s] ds
+updateDatabase (Right _) (ManyToOne ss d) = updateDatabaseHelper ss [d]
+updateDatabase (Right _) (ManyToMany ss ds) = updateDatabaseHelper ss ds
 
 updateDatabaseHelper :: [T.Text] -> [T.Text] -> BuildM ()
 updateDatabaseHelper srcFiles destFiles = do
@@ -482,9 +481,9 @@ updateDatabaseHelper srcFiles destFiles = do
   put $ putChecksumDB (putPendingDBUpdates buildstate updatedPDBU) updatedCDB
   return ()
 
-updateDatabaseExtraDeps :: Either [SrcTransform] T.Text -> [T.Text] -> BuildM (Either [SrcTransform] T.Text)
-updateDatabaseExtraDeps result@(Right _) _ = return result
-updateDatabaseExtraDeps result@(Left _) deps = do
+updateDatabaseExtraDeps :: StageResults -> [T.Text] -> BuildM StageResults
+updateDatabaseExtraDeps result@(Left _) _ = return result
+updateDatabaseExtraDeps result@(Right _) deps = do
   buildstate <- get
   let pdbu = getPendingDBUpdates buildstate
   timestamps <- liftIO $ mapM getTimestamp deps

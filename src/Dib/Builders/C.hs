@@ -221,21 +221,21 @@ makeCTarget info =
         putStrLn $ "Building: " ++ T.unpack sourceFile
         exitCode <- system buildString
         handleExitCode exitCode t buildString
-      buildCmd _ = return $ Right "Unhandled SrcTransform."
+      buildCmd _ = return $ Left "Unhandled SrcTransform."
 
       linkCmd (ManyToOne ss t) = do
         let linkString = makeLinkString ss t
         putStrLn $ "Linking: " ++ T.unpack t
         exitCode <- system linkString
         handleExitCode exitCode t linkString
-      linkCmd _ = return $ Right "Unhandled SrcTransform."
+      linkCmd _ = return $ Left "Unhandled SrcTransform."
 
       archiveCmd (ManyToOne ss t) = do
         let archiveString = makeArchiveString ss t
         putStrLn $ "Archiving: " ++ T.unpack t
         exitCode <- system archiveString
         handleExitCode exitCode t archiveString
-      archiveCmd _ = return $ Right "Unhandled SrcTransform."
+      archiveCmd _ = return $ Left "Unhandled SrcTransform."
 
       buildDirGatherer = makeCommandGatherer $ makeBuildDirs info
       cppStage = Stage "compile" (map (changeExt "o" (outputLocation info))) (cDepScanner (map T.unpack $ includeDirs info)) (extraCompileDeps info) buildCmd
@@ -247,9 +247,9 @@ changeExt :: T.Text -> BuildLocation -> SrcTransform -> SrcTransform
 changeExt newExt b (OneToOne l _) = OneToOne l $ remapObjFile b $ T.append (T.dropWhileEnd (/='.') l) newExt
 changeExt _ _ _ = undefined
 
-handleExitCode :: ExitCode -> T.Text -> String -> IO (Either SrcTransform T.Text)
-handleExitCode ExitSuccess t _ = return $ Left $ OneToOne t ""
-handleExitCode (ExitFailure _) _ e = return $ Right $ T.pack (show e)
+handleExitCode :: ExitCode -> T.Text -> String -> IO StageResult
+handleExitCode ExitSuccess t _ = return $ Right $ OneToOne t ""
+handleExitCode (ExitFailure _) _ e = return $ Left $ T.pack (show e)
 
 combineTransforms :: T.Text -> [SrcTransform] -> [SrcTransform]
 combineTransforms t st = [ManyToOne sources t]
@@ -261,7 +261,7 @@ makeCleanTarget info =
   let cleanCmd (OneToOne s _) = do
         putStrLn $ "removing: " ++ T.unpack s
         D.removeFile (T.unpack s)
-        return $ Left $ OneToOne "" ""
+        return $ Right $ OneToOne "" ""
       cleanCmd _ = error "Should never hit this."
 
       objDir InPlace = srcDir info

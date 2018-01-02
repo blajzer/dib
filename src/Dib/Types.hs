@@ -70,9 +70,14 @@ type InputTransformer = ([SrcTransform] -> [SrcTransform])
 -- a 'SrcTransform' with dependencies included in the input.
 type DepScanner = (SrcTransform -> IO SrcTransform)
 
+-- | Type wrapper for the result of a 'StageFunc'.
+-- Left indicates an error while Right indicates success.
+type StageResult = Either T.Text SrcTransform
+type StageResults = Either T.Text [SrcTransform]
+
 -- | Type wrapper for a function that given a 'SrcTransform', produces either
 -- a 'SrcTransform' containing the output files in the input, or an error.
-type StageFunc = (SrcTransform -> IO (Either SrcTransform T.Text))
+type StageFunc = (SrcTransform -> IO StageResult)
 
 -- | Type describing a build stage.
 -- Takes a name, an 'InputTransformer', 'DepScanner', additional dependencies, and the builder function.
