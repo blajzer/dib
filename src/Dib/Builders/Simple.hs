@@ -10,6 +10,7 @@ module Dib.Builders.Simple (
 
 import Dib.Gatherers
 import Dib.Types
+import Dib.Util
 
 import qualified Data.Text as T
 import qualified System.Directory as D
@@ -34,11 +35,6 @@ remapFile _ _ _ _ = error "Unhandled SrcTransform"
 
 changeExt :: T.Text -> T.Text -> T.Text
 changeExt path = T.append (T.dropWhileEnd (/='.') path)
-
---TODO: move to a utility module and factor out of C builder
-handleExitCode :: ExitCode -> T.Text -> String -> IO StageResult
-handleExitCode ExitSuccess t _ = return $ Right $ OneToOne t ""
-handleExitCode (ExitFailure _) _ e = return $ Left $ T.pack (show e)
 
 -- | The 'makeSimpleTarget' function generates a target.
 -- It takes a name, source directory, destination directory, destination extension,

@@ -17,6 +17,7 @@ module Dib.Builders.C (
 import Dib.Gatherers
 import Dib.Target
 import Dib.Types
+import Dib.Util
 import Dib.Scanners.CDepScanner
 
 import Data.List as L
@@ -247,10 +248,6 @@ makeCTarget info =
 changeExt :: T.Text -> BuildLocation -> SrcTransform -> SrcTransform
 changeExt newExt b (OneToOne l _) = OneToOne l $ remapObjFile b $ (T.dropWhileEnd (/='.') l)  <> newExt
 changeExt _ _ _ = undefined
-
-handleExitCode :: ExitCode -> T.Text -> String -> IO StageResult
-handleExitCode ExitSuccess t _ = return $ Right $ OneToOne t ""
-handleExitCode (ExitFailure _) _ e = return $ Left $ T.pack (show e)
 
 combineTransforms :: T.Text -> [SrcTransform] -> [SrcTransform]
 combineTransforms t st = [ManyToOne sources t]
