@@ -43,14 +43,14 @@
 --
 -- An example of using the C Builder to build an executable called "myProject" with
 -- its source code in the "src/" directory is as follows:
--- 
+--
 -- @
 -- module Main where
--- 
+--
 -- import Dib
 -- import Dib.Builders.C
 -- import qualified Data.Text as T
--- 
+--
 -- projectInfo = defaultGCCConfig {
 --   outputName = "myProject",
 --   targetName = "myProject",
@@ -60,16 +60,16 @@
 --   outputLocation = ObjAndBinDirs "obj" ".",
 --   includeDirs = ["src"]
 -- }
--- 
+--
 -- project = makeCTarget projectInfo
 -- clean = makeCleanTarget projectInfo
--- 
+--
 -- targets = [project, clean]
--- 
+--
 -- main = dib targets
 -- @
--- 
--- This was generated with @dib --init c myProject gcc src@. 
+--
+-- This was generated with @dib --init c myProject gcc src@.
 --
 -- A build script is expected to declare the available 'Target's and then pass them
 -- to the 'dib' function. Only the top-level 'Target's need to be passed to 'dib';
@@ -132,28 +132,40 @@ dib targets = do
   hSetBuffering stderr LineBuffering
   args <- Env.getArgs
   numProcs <- GHC.getNumProcessors
+
+  -- Validate that we have at least one target
+  if targets == [] then putStrLn $ "ERROR: Invalid configuration, no targets defined." else do
+
   let allTargets = gatherAllTargets targets
   let buildArgs = parseArgs args allTargets numProcs
   let selectedTarget = buildTarget buildArgs
   let theTarget = L.find (\(Target name _ _ _ _) -> name == selectedTarget) allTargets
-  if isNothing theTarget
-    then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\"" else
-    do
-      dbLoadStart <- getCurrentTime
-      (tdb, cdb, tcdb) <- loadDatabase
-      dbLoadEnd <- getCurrentTime
 
-      startTime <- getCurrentTime
-      (_, s) <- runBuild (runTarget (fromJust theTarget)) (BuildState buildArgs selectedTarget tdb cdb tcdb Set.empty Map.empty)
-      endTime <- getCurrentTime
+  -- Validate targets
+  let targetErrors = validateTargets allTargets
+  if isJust targetErrors then putStrLn $ "ERROR: Invalid targets:\n" ++ fromJust targetErrors else do
 
-      dbSaveStart <- getCurrentTime
-      saveDatabase (getTargetTimestampDB s) (getChecksumDB s) (getTargetChecksumDB s)
-      dbSaveEnd <- getCurrentTime
+  -- Validate that we're trying to build something that exists
+  if isNothing theTarget then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\"" else do
 
-      putStrLn $ "DB load/save took " ++ show (diffUTCTime dbLoadEnd dbLoadStart) ++ "/" ++ show (diffUTCTime dbSaveEnd dbSaveStart) ++ " seconds."
-      putStrLn $ "Build took " ++ show (diffUTCTime endTime startTime) ++ " seconds."
-      return ()
+  -- load the database
+  dbLoadStart <- getCurrentTime
+  (tdb, cdb, tcdb) <- loadDatabase
+  dbLoadEnd <- getCurrentTime
+
+  -- run the build
+  startTime <- getCurrentTime
+  (_, s) <- runBuild (runTarget (fromJust theTarget)) (BuildState buildArgs selectedTarget tdb cdb tcdb Set.empty Map.empty)
+  endTime <- getCurrentTime
+
+  -- save the database
+  dbSaveStart <- getCurrentTime
+  saveDatabase (getTargetTimestampDB s) (getChecksumDB s) (getTargetChecksumDB s)
+  dbSaveEnd <- getCurrentTime
+
+  -- output build stats
+  putStrLn $ "DB load/save took " ++ show (diffUTCTime dbLoadEnd dbLoadStart) ++ "/" ++ show (diffUTCTime dbSaveEnd dbSaveStart) ++ " seconds."
+  putStrLn $ "Build took " ++ show (diffUTCTime endTime startTime) ++ " seconds."
 
 gatherAllTargetsInternal :: [Target] -> Set.Set Target -> Set.Set Target
 gatherAllTargetsInternal (t:ts) s =
@@ -166,6 +178,12 @@ gatherAllTargets t =
   let allTargets = Set.toList $ gatherAllTargetsInternal t Set.empty
       targetsMinusInitial = L.filter (\x -> x /= head t) allTargets
   in head t : targetsMinusInitial
+
+validateTargets :: [Target] -> Maybe String
+validateTargets ts =
+  let targetErrors = L.foldl' (\acc t -> acc ++ validate t) "" ts
+      validate (Target name _ _ stages gatherers) = if length stages > 0 && length gatherers == 0 then (T.unpack name) ++ ": target requires at least one gatherer since it specifies at least one stage.\n" else ""
+  in if targetErrors == "" then Nothing else Just targetErrors
 
 extractVarsFromArgs :: [String] -> ArgDict
 extractVarsFromArgs args = L.foldl' extractVarsFromArgsInternal Map.empty $ map (L.break (== '=')) args
