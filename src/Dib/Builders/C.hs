@@ -20,6 +20,7 @@ import Dib.Types
 import Dib.Scanners.CDepScanner
 
 import Data.List as L
+import Data.Monoid
 import Data.Word
 import System.Process (system)
 import System.Directory as D
@@ -184,13 +185,13 @@ massageFilePath p = T.replace "\\" "_" $ T.replace "/" "_" p
 
 remapObjFile :: BuildLocation -> T.Text -> T.Text
 remapObjFile InPlace f = f
-remapObjFile (BuildDir d) f = d `T.snoc` F.pathSeparator `T.append` massageFilePath f
-remapObjFile (ObjAndBinDirs d _) f = d `T.snoc` F.pathSeparator `T.append` massageFilePath f
+remapObjFile (BuildDir d) f = d `T.snoc` F.pathSeparator <> massageFilePath f
+remapObjFile (ObjAndBinDirs d _) f = d `T.snoc` F.pathSeparator <> massageFilePath f
 
 remapBinFile :: BuildLocation -> T.Text -> T.Text
 remapBinFile InPlace f = f
-remapBinFile (BuildDir d) f = d `T.snoc` F.pathSeparator `T.append` f
-remapBinFile (ObjAndBinDirs _ d) f = d `T.snoc` F.pathSeparator `T.append` f
+remapBinFile (BuildDir d) f = d `T.snoc` F.pathSeparator <> f
+remapBinFile (ObjAndBinDirs _ d) f = d `T.snoc` F.pathSeparator <> f
 
 -- | Given a 'CTargetInfo', will make the directories required to build the project.
 makeBuildDirs :: CTargetInfo -> IO ()
@@ -210,7 +211,7 @@ getCorrectCompileFlags info s = if ".c" `T.isSuffixOf` s then cCompileFlags info
 -- | Given a 'CTargetInfo', produces a 'Target'
 makeCTarget :: CTargetInfo -> Target
 makeCTarget info =
-  let includeDirString = includeOption info `T.append` T.intercalate (" " `T.append` includeOption info) (includeDirs info)
+  let includeDirString = includeOption info <> T.intercalate (" " <> includeOption info) (includeDirs info)
       makeBuildString s t = T.unpack $ T.concat [compiler info, " ", inFileOption info, " ", s, " ", outFileOption info, " ", t, " ", includeDirString, " ", commonCompileFlags info, " ", getCorrectCompileFlags info s]
       makeLinkString ss t = T.unpack $ T.concat [linker info, " ", T.unwords ss, " ", outFileOption info, " ", t, " ", linkFlags info]
       makeArchiveString ss t = T.unpack $ T.concat [archiver info, " ", archiverFlags info, " ", t, " ", T.unwords ss]
@@ -244,7 +245,7 @@ makeCTarget info =
   in Target (targetName info) (cTargetHash info) [] [cppStage, if staticLibrary info then archiveStage else linkStage] [buildDirGatherer, makeFileTreeGatherer (srcDir info) (matchExtensionsExcluded [".cpp", ".c"] [excludeFiles $ exclusions info])]
 
 changeExt :: T.Text -> BuildLocation -> SrcTransform -> SrcTransform
-changeExt newExt b (OneToOne l _) = OneToOne l $ remapObjFile b $ T.append (T.dropWhileEnd (/='.') l) newExt
+changeExt newExt b (OneToOne l _) = OneToOne l $ remapObjFile b $ (T.dropWhileEnd (/='.') l)  <> newExt
 changeExt _ _ _ = undefined
 
 handleExitCode :: ExitCode -> T.Text -> String -> IO StageResult
@@ -269,8 +270,8 @@ makeCleanTarget info =
       objDir (ObjAndBinDirs d _) = d
 
       programFile InPlace = outputName info
-      programFile (BuildDir d) = d `T.snoc` F.pathSeparator `T.append` outputName info
-      programFile (ObjAndBinDirs _ d) = d `T.snoc` F.pathSeparator `T.append` outputName info
+      programFile (BuildDir d) = d `T.snoc` F.pathSeparator <> outputName info
+      programFile (ObjAndBinDirs _ d) = d `T.snoc` F.pathSeparator <> outputName info
 
       cleanStage = Stage "clean" id return [] cleanCmd
       objectGatherer = makeFileTreeGatherer (objDir $ outputLocation info) (matchExtension ".o")
