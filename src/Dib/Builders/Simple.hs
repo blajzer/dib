@@ -15,7 +15,6 @@ import Dib.Util
 import qualified Data.Text as T
 import qualified System.Directory as D
 import System.Process (system)
-import System.Exit
 import System.FilePath as P
 
 buildFunc :: (String -> String -> String) -> SrcTransform -> IO StageResult

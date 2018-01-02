@@ -135,16 +135,17 @@ dib targets = do
   numProcs <- GHC.getNumProcessors
 
   -- Validate that we have at least one target
-  if targets == [] then putStrLn $ "ERROR: Invalid configuration, no targets defined." else do
+  if null targets then putStrLn "ERROR: Invalid configuration, no targets defined." else do
 
   let allTargets = gatherAllTargets targets
-  let buildArgs = parseArgs args allTargets numProcs
-  let selectedTarget = buildTarget buildArgs
-  let theTarget = L.find (\(Target name _ _ _ _) -> name == selectedTarget) allTargets
 
   -- Validate targets
   let targetErrors = validateTargets allTargets
   if isJust targetErrors then putStrLn $ "ERROR: Invalid targets:\n" ++ fromJust targetErrors else do
+
+  let buildArgs = parseArgs args allTargets numProcs
+  let selectedTarget = buildTarget buildArgs
+  let theTarget = L.find (\(Target name _ _ _ _) -> name == selectedTarget) allTargets
 
   -- Validate that we're trying to build something that exists
   if isNothing theTarget then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\"" else do
@@ -183,7 +184,7 @@ gatherAllTargets t =
 validateTargets :: [Target] -> Maybe String
 validateTargets ts =
   let targetErrors = L.foldl' (\acc t -> acc ++ validate t) "" ts
-      validate (Target name _ _ stages gatherers) = if length stages > 0 && length gatherers == 0 then (T.unpack name) ++ ": target requires at least one gatherer since it specifies at least one stage.\n" else ""
+      validate (Target name _ _ stages gatherers) = if not (null stages) && null gatherers then T.unpack name ++ ": target requires at least one gatherer since it specifies at least one stage.\n" else ""
   in if targetErrors == "" then Nothing else Just targetErrors
 
 extractVarsFromArgs :: [String] -> ArgDict
@@ -232,10 +233,7 @@ makeArgDictLookupFuncChecked :: String -> String -> [String] -> ArgDict -> Eithe
 makeArgDictLookupFuncChecked arg defVal validValues dict =
     let partialResult = makeArgDictLookupFunc arg defVal dict
         result = L.find (== partialResult) validValues
-    in if isJust result then
-        Right $ fromJust result
-      else
-        Left $ "ERROR: invalid value \"" ++ partialResult ++ "\" for argument \"" ++ arg ++ "\". Expected one of: [" ++ L.intercalate  ", " validValues ++ "]"
+    in maybe (Left $ "ERROR: invalid value \"" ++ partialResult ++ "\" for argument \"" ++ arg ++ "\". Expected one of: [" ++ L.intercalate  ", " validValues ++ "]") Right result
 
 printSeparator :: IO ()
 printSeparator = putStrLn "============================================================"

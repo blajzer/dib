@@ -156,7 +156,7 @@ getStoredTokenFileContents f = do
       return ""
 
 processExitCode :: ExitCode -> IO ()
-processExitCode (ExitSuccess) = return ()
+processExitCode ExitSuccess = return ()
 processExitCode (ExitFailure n) = error $ "Error " ++ show n ++ " building dib.hs."
 
 rebuild :: Bool -> IO ()

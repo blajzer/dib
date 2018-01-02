@@ -25,7 +25,6 @@ import Data.Monoid
 import Data.Word
 import System.Process (system)
 import System.Directory as D
-import System.Exit
 import System.FilePath as F
 
 import qualified Data.Digest.CRC32 as Hash
@@ -246,7 +245,7 @@ makeCTarget info =
   in Target (targetName info) (cTargetHash info) [] [cppStage, if staticLibrary info then archiveStage else linkStage] [buildDirGatherer, makeFileTreeGatherer (srcDir info) (matchExtensionsExcluded [".cpp", ".c"] [excludeFiles $ exclusions info])]
 
 changeExt :: T.Text -> BuildLocation -> SrcTransform -> SrcTransform
-changeExt newExt b (OneToOne l _) = OneToOne l $ remapObjFile b $ (T.dropWhileEnd (/='.') l)  <> newExt
+changeExt newExt b (OneToOne l _) = OneToOne l $ remapObjFile b $ T.dropWhileEnd (/='.') l <> newExt
 changeExt _ _ _ = undefined
 
 combineTransforms :: T.Text -> [SrcTransform] -> [SrcTransform]

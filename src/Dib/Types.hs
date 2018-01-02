@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, ExistentialQuantification, OverloadedStrings #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, ExistentialQuantification #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# OPTIONS_HADDOCK hide, prune #-}
 
@@ -117,7 +117,7 @@ data Gatherer = forall s . GatherStrategy s => Gatherer s
 type FilterFunc = (T.Text -> Bool)
 
 -- | 'Gatherer' that will return exactly one file.
-data SingleFileGatherer = SingleFileGatherer T.Text
+newtype SingleFileGatherer = SingleFileGatherer T.Text
 
 -- | 'Gatherer' that will return all files in a given directory (but not its
 -- subdirectories) that pass the filter.
@@ -129,7 +129,7 @@ data FileTreeGatherer = FileTreeGatherer T.Text FilterFunc
 
 -- | 'Gatherer' that will run a command and return an empty list.
 -- Useful for making clean 'Target's. Use sparingly.
-data CommandGatherer = CommandGatherer (IO ())
+newtype CommandGatherer = CommandGatherer (IO ())
 
 -- Horrible.
 instance Serialize.Serialize T.Text where
