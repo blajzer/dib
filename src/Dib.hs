@@ -123,7 +123,7 @@ databaseFile :: String
 databaseFile = ".dib/dibdb"
 
 databaseVersion :: Integer
-databaseVersion = 3
+databaseVersion = 4
 
 -- | The function that should be called to dispatch the build. Takes a list
 -- of the top-level (root) 'Target's.
@@ -326,7 +326,8 @@ shouldBuildMapping t c (ManyToOne ss d) = hasSrcChanged t ss <||> hasChecksumCha
 shouldBuildMapping t c (ManyToMany ss ds) = hasSrcChanged t ss <||> hasChecksumChanged c ss ds  <||> fmap (not.and) (mapM (D.doesFileExist.T.unpack) ds)
 
 hasSrcChanged :: TimestampDB -> [T.Text] -> IO Bool
-hasSrcChanged m f = let filesInMap = zip f $ map (`Map.lookup` m) f
+hasSrcChanged m f = let filesInMap = zip f $ map fileChecksum f
+                        fileChecksum file = Map.lookup (Hash.crc32 $ TE.encodeUtf8 file) m
                         checkTimeStamps _ (_, Nothing) = return True
                         checkTimeStamps b (file, Just s) = getTimestamp file >>= (\t -> return $ b || (t /= s))
                     in foldM checkTimeStamps False filesInMap
@@ -489,7 +490,7 @@ updateDatabaseHelper srcFiles destFiles = do
   let pdbu = getPendingDBUpdates buildstate
   timestamps <- liftIO $ mapM getTimestamp srcFiles
   let filteredResults = filter (\(_, v) -> v /= 0) $ zip srcFiles timestamps
-  let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert k v m) pdbu filteredResults
+  let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert (Hash.crc32 $ TE.encodeUtf8 k) v m) pdbu filteredResults
   let cdb = getChecksumDB buildstate
   let (key, cs) = getChecksumPair srcFiles destFiles
   let updatedCDB = Map.insert key cs cdb
@@ -503,7 +504,7 @@ updateDatabaseExtraDeps result@(Right _) deps = do
   let pdbu = getPendingDBUpdates buildstate
   timestamps <- liftIO $ mapM getTimestamp deps
   let filteredResults = filter (\(_, v) -> v /= 0) $ zip deps timestamps
-  let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert k v m) pdbu filteredResults
+  let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert (Hash.crc32 $ TE.encodeUtf8 k) v m) pdbu filteredResults
   put $ putPendingDBUpdates buildstate updatedPDBU
   return result
 

@@ -18,18 +18,29 @@ import qualified Data.Text as T
 import Data.Word
 
 -- | Type wrapper for the timestamp database.
-type TimestampDB = Map.Map T.Text Integer
+-- Maps checksums to timestamps.
+type TimestampDB = Map.Map Word32 Integer
+
 -- | Type wrapper for the target timestamp database.
+-- Maps target names to timestamp databases
 type TargetTimestampDB = Map.Map T.Text TimestampDB
+
 -- | Type wrapper for the checksum database.
+-- Maps muxes destination string to checksum of source string
+-- TODO: switch to checksum of both
 type ChecksumDB = Map.Map T.Text Word32
+
 -- | Type wrapper for the target checksum database.
+-- Maps target name to target-specific checksum
 type TargetChecksumDB = Map.Map T.Text Word32
+
 -- | Type wrapper for the set of currently up-to-date 'Target's.
 type UpToDateTargets = Set.Set Target
+
 -- | Type wrapper for the list of database updates that will happen after
 -- a successful 'Target' build.
-type PendingDBUpdates = Map.Map T.Text Integer
+type PendingDBUpdates = Map.Map Word32 Integer
+
 -- | Type wrapper for the dictionary of arguments that are extracted from the
 -- command line.
 type ArgDict = Map.Map String String
