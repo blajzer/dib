@@ -26,9 +26,8 @@ type TimestampDB = Map.Map Word32 Integer
 type TargetTimestampDB = Map.Map T.Text TimestampDB
 
 -- | Type wrapper for the checksum database.
--- Maps muxes destination string to checksum of source string
--- TODO: switch to checksum of both
-type ChecksumDB = Map.Map T.Text Word32
+-- Maps checksum of muxed destination string to checksum of muxed source string
+type ChecksumDB = Map.Map Word32 Word32
 
 -- | Type wrapper for the target checksum database.
 -- Maps target name to target-specific checksum
