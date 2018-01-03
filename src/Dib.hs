@@ -135,39 +135,42 @@ dib targets = do
   numProcs <- GHC.getNumProcessors
 
   -- Validate that we have at least one target
-  if null targets then putStrLn "ERROR: Invalid configuration, no targets defined." else do
+  if null targets
+    then putStrLn "ERROR: Invalid configuration, no targets defined."
+    else do
+      -- Validate targets
+      let allTargets = gatherAllTargets targets
+      let targetErrors = validateTargets allTargets
+      if isJust targetErrors
+        then putStrLn $ "ERROR: Invalid targets:\n" ++ fromJust targetErrors
+        else do
+          let buildArgs = parseArgs args allTargets numProcs
+          let selectedTarget = buildTarget buildArgs
+          let theTarget = L.find (\(Target name _ _ _ _) -> name == selectedTarget) allTargets
 
-  let allTargets = gatherAllTargets targets
+          -- Validate that we're trying to build something that exists
+          if isNothing theTarget
+            then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\""
+            else do
+              -- load the database
+              dbLoadStart <- getCurrentTime
+              (tdb, cdb, tcdb) <- loadDatabase
+              dbLoadEnd <- getCurrentTime
 
-  -- Validate targets
-  let targetErrors = validateTargets allTargets
-  if isJust targetErrors then putStrLn $ "ERROR: Invalid targets:\n" ++ fromJust targetErrors else do
+              -- run the build
+              startTime <- getCurrentTime
+              let buildState = BuildState buildArgs selectedTarget tdb cdb tcdb Set.empty Map.empty
+              (_, s) <- runBuild (runTarget $ fromJust theTarget) buildState
+              endTime <- getCurrentTime
 
-  let buildArgs = parseArgs args allTargets numProcs
-  let selectedTarget = buildTarget buildArgs
-  let theTarget = L.find (\(Target name _ _ _ _) -> name == selectedTarget) allTargets
+              -- save the database
+              dbSaveStart <- getCurrentTime
+              saveDatabase (getTargetTimestampDB s) (getChecksumDB s) (getTargetChecksumDB s)
+              dbSaveEnd <- getCurrentTime
 
-  -- Validate that we're trying to build something that exists
-  if isNothing theTarget then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\"" else do
-
-  -- load the database
-  dbLoadStart <- getCurrentTime
-  (tdb, cdb, tcdb) <- loadDatabase
-  dbLoadEnd <- getCurrentTime
-
-  -- run the build
-  startTime <- getCurrentTime
-  (_, s) <- runBuild (runTarget (fromJust theTarget)) (BuildState buildArgs selectedTarget tdb cdb tcdb Set.empty Map.empty)
-  endTime <- getCurrentTime
-
-  -- save the database
-  dbSaveStart <- getCurrentTime
-  saveDatabase (getTargetTimestampDB s) (getChecksumDB s) (getTargetChecksumDB s)
-  dbSaveEnd <- getCurrentTime
-
-  -- output build stats
-  putStrLn $ "DB load/save took " ++ show (diffUTCTime dbLoadEnd dbLoadStart) ++ "/" ++ show (diffUTCTime dbSaveEnd dbSaveStart) ++ " seconds."
-  putStrLn $ "Build took " ++ show (diffUTCTime endTime startTime) ++ " seconds."
+              -- output build stats
+              putStrLn $ "DB load/save took " ++ show (diffUTCTime dbLoadEnd dbLoadStart) ++ "/" ++ show (diffUTCTime dbSaveEnd dbSaveStart) ++ " seconds."
+              putStrLn $ "Build took " ++ show (diffUTCTime endTime startTime) ++ " seconds."
 
 gatherAllTargetsInternal :: [Target] -> Set.Set Target -> Set.Set Target
 gatherAllTargetsInternal (t:ts) s =
