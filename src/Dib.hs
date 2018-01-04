@@ -303,10 +303,10 @@ targetIsUpToDate :: BuildState -> Target -> Bool
 targetIsUpToDate (BuildState _ _ _ _ _ s _) t = Set.member t s
 
 -- | Partitions out up-to-date mappings
-partitionMappings :: [SrcTransform] -> [T.Text] -> Bool -> BuildM ([SrcTransform], [SrcTransform])
-partitionMappings files extraDeps force = do
+partitionMappings :: T.Text -> T.Text -> [SrcTransform] -> [T.Text] -> Bool -> BuildM ([SrcTransform], [SrcTransform])
+partitionMappings targetName stageName files extraDeps force = do
   s <- get
-  extraDepsChanged <- liftIO $ hasSrcChanged (getTimestampDB s) extraDeps
+  extraDepsChanged <- liftIO $ hasSrcChanged (getTimestampDB s) (ManyToOne extraDeps (T.concat $ [targetName, "^:^", stageName])) extraDeps
   if force || extraDepsChanged then
       return (files, [])
     else do
@@ -320,19 +320,26 @@ partitionMappings files extraDeps force = do
 
 -- function for filtering FileMappings based on them already being taken care of
 shouldBuildMapping :: TimestampDB -> ChecksumDB -> SrcTransform -> IO Bool
-shouldBuildMapping t c (OneToOne s d) = hasSrcChanged t [s] <||> hasChecksumChanged c [s] [d] <||> fmap not (D.doesFileExist $ T.unpack d)
-shouldBuildMapping t c (OneToMany s ds) = hasSrcChanged t [s] <||> hasChecksumChanged c [s] ds  <||> fmap (not.and) (mapM (D.doesFileExist.T.unpack) ds)
-shouldBuildMapping t c (ManyToOne ss d) = hasSrcChanged t ss <||> hasChecksumChanged c ss [d]  <||> fmap not (D.doesFileExist $ T.unpack d)
-shouldBuildMapping t c (ManyToMany ss ds) = hasSrcChanged t ss <||> hasChecksumChanged c ss ds  <||> fmap (not.and) (mapM (D.doesFileExist.T.unpack) ds)
+shouldBuildMapping t c src@(OneToOne s d) = hasSrcChanged t src [s] <||> hasChecksumChanged c [s] [d] <||> fmap not (D.doesFileExist $ T.unpack d)
+shouldBuildMapping t c src@(OneToMany s ds) = hasSrcChanged t src [s] <||> hasChecksumChanged c [s] ds  <||> fmap (not.and) (mapM (D.doesFileExist.T.unpack) ds)
+shouldBuildMapping t c src@(ManyToOne ss d) = hasSrcChanged t src ss <||> hasChecksumChanged c ss [d]  <||> fmap not (D.doesFileExist $ T.unpack d)
+shouldBuildMapping t c src@(ManyToMany ss ds) = hasSrcChanged t src ss <||> hasChecksumChanged c ss ds  <||> fmap (not.and) (mapM (D.doesFileExist.T.unpack) ds)
 
 hashText :: T.Text -> Word32
 hashText t = Hash.crc32 $ TE.encodeUtf8 t
 
-hasSrcChanged :: TimestampDB -> [T.Text] -> IO Bool
-hasSrcChanged m f = let filesInMap = zip f $ map fileChecksum f
-                        fileChecksum file = Map.lookup (hashText file) m
-                        checkTimeStamps _ (_, Nothing) = return True
-                        checkTimeStamps b (file, Just s) = getTimestamp file >>= (\t -> return $ b || (t /= s))
+hashTransform :: SrcTransform -> [Word32]
+hashTransform (OneToOne s d) = [hashText $ T.concat [s, "^^^^", d]]
+hashTransform (OneToMany s ds) = [hashText $ T.concat $ s : "^^^^" : (L.intersperse ":" ds)]
+hashTransform (ManyToOne ss d) = map (\s -> hashText $ T.concat [s, "^^^^", d]) ss
+hashTransform (ManyToMany ss ds) =
+  let destMux = L.intersperse ":" ds
+  in map (\s -> hashText $ T.concat $ s : "^^^^" : destMux) ss
+
+hasSrcChanged :: TimestampDB -> SrcTransform -> [T.Text] -> IO Bool
+hasSrcChanged m tr f = let filesInMap = zip f $ map (\v -> Map.lookup v m) $ hashTransform tr
+                           checkTimeStamps _ (_, Nothing) = return True
+                           checkTimeStamps b (file, Just s) = getTimestamp file >>= (\t -> return $ b || (t /= s))
                     in foldM checkTimeStamps False filesInMap
 
 getTimestamp :: T.Text -> IO Integer
@@ -400,7 +407,7 @@ runTargetInternal t@(Target name hashFunc _ stages gatherers) = do
   gatheredFiles <- liftIO $ runGatherers gatherers
   let srcTransforms = map (flip OneToOne "") gatheredFiles
   liftIO $ putStrLn $ "==== Target: \"" ++ T.unpack name ++ "\""
-  stageResult <- foldM stageFoldFunc (Right srcTransforms) $ zip stages $ repeat forceRebuild
+  stageResult <- foldM (stageFoldFunc name) (Right srcTransforms) $ zip stages $ repeat forceRebuild
   if isRight stageResult then targetSuccessFunc t else buildFailFunc stageResult name
 
 targetSuccessFunc :: Target -> BuildM StageResults
@@ -413,9 +420,9 @@ targetSuccessFunc t@(Target name hashFunc _ _ _) = do
   liftIO $ putStrLn ""
   return $ Right []
 
-stageFoldFunc :: StageResults -> (Stage, Bool) -> BuildM StageResults
-stageFoldFunc (Right t) (s, force) = runStage s force t
-stageFoldFunc l@(Left _) _ = return l
+stageFoldFunc :: T.Text -> StageResults -> (Stage, Bool) -> BuildM StageResults
+stageFoldFunc targetName (Right t) (s, force) = runStage targetName s force t
+stageFoldFunc _ l@(Left _) _ = return l
 
 workerThreadFunc :: (SrcTransform -> IO StageResult) -> MVar [SrcTransform] -> MVar (StageResults, [BuildM ()]) -> MVar (StageResults, [BuildM ()]) -> MVar Int -> IO ()
 workerThreadFunc sf q r f c = do
@@ -459,14 +466,14 @@ stageHelper f m i r = do
       sequence_ $ snd result
       return $ fst result
 
-runStage :: Stage -> Bool -> [SrcTransform] -> BuildM StageResults
-runStage s@(Stage name _ _ extraDeps f) force m = do
+runStage :: T.Text -> Stage -> Bool -> [SrcTransform] -> BuildM StageResults
+runStage targetName s@(Stage name _ _ extraDeps f) force m = do
   liftIO $ putStrLn $ "-- Stage: \"" ++ T.unpack name ++ "\""
   depScannedFiles <- liftIO $ processMappings s m
-  (targetsToBuild, upToDateTargets) <- partitionMappings depScannedFiles extraDeps force
+  (targetsToBuild, upToDateTargets) <- partitionMappings targetName name depScannedFiles extraDeps force
   bs <- get
   result <- stageHelper f (getMaxBuildJobs bs) targetsToBuild (Right $ map transferUpToDateTarget upToDateTargets)
-  updateDatabaseExtraDeps result extraDeps
+  updateDatabaseExtraDeps targetName name result extraDeps
 
 -- These might not be quite correct. I guessed at what made sense.
 transferUpToDateTarget :: SrcTransform -> SrcTransform
@@ -482,32 +489,32 @@ processMappings (Stage _ t d _ _) m = do
 
 updateDatabase :: Either l r -> SrcTransform -> BuildM ()
 updateDatabase (Left _) _ = return ()
-updateDatabase (Right _) (OneToOne s d) = updateDatabaseHelper [s] [d]
-updateDatabase (Right _) (OneToMany s ds) = updateDatabaseHelper [s] ds
-updateDatabase (Right _) (ManyToOne ss d) = updateDatabaseHelper ss [d]
-updateDatabase (Right _) (ManyToMany ss ds) = updateDatabaseHelper ss ds
+updateDatabase (Right _) src@(OneToOne s d) = updateDatabaseHelper src [s] [d]
+updateDatabase (Right _) src@(OneToMany s ds) = updateDatabaseHelper src [s] ds
+updateDatabase (Right _) src@(ManyToOne ss d) = updateDatabaseHelper src ss [d]
+updateDatabase (Right _) src@(ManyToMany ss ds) = updateDatabaseHelper src ss ds
 
-updateDatabaseHelper :: [T.Text] -> [T.Text] -> BuildM ()
-updateDatabaseHelper srcFiles destFiles = do
+updateDatabaseHelper :: SrcTransform -> [T.Text] -> [T.Text] -> BuildM ()
+updateDatabaseHelper transform srcFiles destFiles = do
   buildstate <- get
   let pdbu = getPendingDBUpdates buildstate
   timestamps <- liftIO $ mapM getTimestamp srcFiles
-  let filteredResults = filter (\(_, v) -> v /= 0) $ zip srcFiles timestamps
-  let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert (hashText k) v m) pdbu filteredResults
+  let filteredResults = filter (\(_, v) -> v /= 0) $ zip (hashTransform transform) timestamps
+  let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert k v m) pdbu filteredResults
   let cdb = getChecksumDB buildstate
   let (key, cs) = getChecksumPair srcFiles destFiles
   let updatedCDB = Map.insert key cs cdb
   put $ putChecksumDB (putPendingDBUpdates buildstate updatedPDBU) updatedCDB
   return ()
 
-updateDatabaseExtraDeps :: StageResults -> [T.Text] -> BuildM StageResults
-updateDatabaseExtraDeps result@(Left _) _ = return result
-updateDatabaseExtraDeps result@(Right _) deps = do
+updateDatabaseExtraDeps :: T.Text -> T.Text -> StageResults -> [T.Text] -> BuildM StageResults
+updateDatabaseExtraDeps _ _ result@(Left _) _ = return result
+updateDatabaseExtraDeps targetName stageName result@(Right _) deps = do
   buildstate <- get
   let pdbu = getPendingDBUpdates buildstate
   timestamps <- liftIO $ mapM getTimestamp deps
-  let filteredResults = filter (\(_, v) -> v /= 0) $ zip deps timestamps
-  let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert (hashText k) v m) pdbu filteredResults
+  let filteredResults = filter (\(_, v) -> v /= 0) $ zip (hashTransform $ ManyToOne deps (T.concat $ [targetName, "^:^", stageName])) timestamps
+  let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert k v m) pdbu filteredResults
   put $ putPendingDBUpdates buildstate updatedPDBU
   return result
 
