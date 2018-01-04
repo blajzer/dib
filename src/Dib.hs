@@ -385,7 +385,6 @@ runTarget t@(Target name _ deps _ _) = do
   depStatus <- foldM buildFoldFunc (Right []) outdatedTargets
   if isRight depStatus then do
       result <- runTargetInternal t
-      writePendingDBUpdates
       return result
     else
       buildFailFunc depStatus name
@@ -473,6 +472,7 @@ runStage targetName s@(Stage name _ _ extraDeps f) force m = do
   (targetsToBuild, upToDateTargets) <- partitionMappings targetName name depScannedFiles extraDeps force
   bs <- get
   result <- stageHelper f (getMaxBuildJobs bs) targetsToBuild (Right $ map transferUpToDateTarget upToDateTargets)
+  writePendingDBUpdates
   updateDatabaseExtraDeps targetName name result extraDeps
 
 -- These might not be quite correct. I guessed at what made sense.
