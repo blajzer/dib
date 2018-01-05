@@ -1,4 +1,4 @@
--- Copyright (c) 2010-2016 Brett Lajzer
+-- Copyright (c) 2010-2018 Brett Lajzer
 -- See LICENSE for license information.
 
 -- | This is the command-line executable "dib". Since Dib proper is a
@@ -156,7 +156,7 @@ getStoredTokenFileContents f = do
       return ""
 
 processExitCode :: ExitCode -> IO ()
-processExitCode (ExitSuccess) = return ()
+processExitCode ExitSuccess = return ()
 processExitCode (ExitFailure n) = error $ "Error " ++ show n ++ " building dib.hs."
 
 rebuild :: Bool -> IO ()
@@ -167,16 +167,16 @@ rebuild needToRebuild =
       exitCode <- system buildString
       D.setCurrentDirectory ".."
       processExitCode exitCode
-      
+
       calTimeStr <- getDibCalendarTimeStr
       tsFile <- openFile timestampFile WriteMode
       hPutStr tsFile calTimeStr
       hClose tsFile
-      
+
       let versionStr = showVersion version
       verFile <- openFile versionFile WriteMode
       hPutStr verFile versionStr
-      hClose verFile 
+      hClose verFile
 
 requoteArg :: String -> String
 requoteArg arg = requoteArgInternal arg False
@@ -191,7 +191,7 @@ buildAndRunDib args = do
   D.createDirectoryIfMissing False ".dib"
   needToRebuild <- checkDibTimestamps
   rebuild needToRebuild
-  let quotes = if os =="mingw32" then "\"\"" else "" 
+  let quotes = if os =="mingw32" then "\"\"" else ""
   system $ quotes ++ correctExe ++ quotes ++ " +RTS -N -RTS " ++ args
 
 shouldHandleInit :: [String] -> Bool

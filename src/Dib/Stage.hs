@@ -1,4 +1,4 @@
--- Copyright (c) 2010-2016 Brett Lajzer
+-- Copyright (c) 2010-2018 Brett Lajzer
 -- See LICENSE for license information.
 
 -- | Module exposing the 'Stage' type and related type wrappers, along with a
@@ -15,4 +15,4 @@ import Dib.Types
 
 -- | A stage that does nothing and just passes the 'SrcTransform's through.
 emptyStage :: Stage
-emptyStage = Stage "empty" id return [] (return.Left)
+emptyStage = Stage "empty" id return [] (return.Right)

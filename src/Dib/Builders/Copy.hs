@@ -1,4 +1,4 @@
--- Copyright (c) 2010-2016 Brett Lajzer
+-- Copyright (c) 2010-2018 Brett Lajzer
 -- See LICENSE for license information.
 
 -- | A trivial builder that copies a directory tree from one location to another.
@@ -13,15 +13,15 @@ import qualified Data.Text as T
 import qualified System.Directory as D
 import System.FilePath as P
 
-copyFunc :: SrcTransform -> IO (Either SrcTransform T.Text)
+copyFunc :: SrcTransform -> IO StageResult
 copyFunc (OneToOne s t) = do
   let unpackedTarget = T.unpack t
   let unpackedSource = T.unpack s
   D.createDirectoryIfMissing True $ takeDirectory unpackedTarget
   putStrLn $ "Copying: " ++ unpackedSource ++ " -> " ++ unpackedTarget
   D.copyFile unpackedSource unpackedTarget
-  return $ Left (OneToOne t "")
-copyFunc _ = return $ Right "Unexpected SrcTransform"
+  return $ Right (OneToOne t "")
+copyFunc _ = return $ Left "Unexpected SrcTransform"
 
 remapFile :: String -> String -> SrcTransform -> SrcTransform
 remapFile src dest (OneToOne s _) = OneToOne s $ T.pack $ dest </> makeRelative src (T.unpack s)

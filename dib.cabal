@@ -1,6 +1,6 @@
 name:           dib
-version:        0.6.1
-cabal-version:  >= 1.6
+version:        0.7.2
+cabal-version:  >= 1.10
 category:		Development
 build-type:     Simple
 license:        MIT
@@ -17,18 +17,19 @@ source-repository head
 source-repository this
   type: git
   location: https://github.com/blajzer/dib.git
-  tag: 0.6.1
+  tag: 0.7.2
 
 library
-  build-depends:   base >= 4.4 && < 4.10, text, containers, mtl, directory, time, process, filepath, cereal, bytestring, digest
+  build-depends:   base >= 4.8 && < 4.11, text, containers, mtl, directory, time, process, filepath, cereal, bytestring, digest
   ghc-options:     -Wall
   hs-source-dirs:  src
   exposed-modules: Dib, Dib.Gatherers, Dib.Stage, Dib.Target, Dib.Types, Dib.Scanners.CDepScanner, Dib.Builders.C, Dib.Builders.Copy, Dib.Builders.Simple, Dib.Util
-  extensions:      OverloadedStrings
+  default-extensions: OverloadedStrings
+  default-language: Haskell2010
 
 executable dib
-  build-depends:   base >= 4.4 && < 4.10, containers, mtl, time, directory, filepath
+  build-depends:   base >= 4.8 && < 4.11, containers, mtl, time, directory, filepath, process
   ghc-options:     -Wall
   hs-source-dirs:  .
   main-is:         Main.hs
-
+  default-language: Haskell2010

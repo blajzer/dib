@@ -1,5 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, ExistentialQuantification, KindSignatures, FlexibleContexts #-}
--- Copyright (c) 2010-2016 Brett Lajzer
+-- Copyright (c) 2010-2018 Brett Lajzer
 -- See LICENSE for license information.
 
 -- | C dependency scanner. Runs a stripped-down pre-processor to scan for
@@ -150,4 +150,3 @@ cDepScanner :: [FilePath] -> SrcTransform -> IO SrcTransform
 cDepScanner includeDirs (OneToOne i o) = getDepsForFile includeDirs (T.unpack i) >>= \d -> return $ ManyToOne (i:d) o
 cDepScanner includeDirs (OneToMany i o) = getDepsForFile includeDirs (T.unpack i) >>= \d -> return $ ManyToMany (i:d) o
 cDepScanner _ _ = error "Unimplemented. Implement this if it is a valid relationship."
-

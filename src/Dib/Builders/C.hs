@@ -1,4 +1,4 @@
--- Copyright (c) 2010-2016 Brett Lajzer
+-- Copyright (c) 2010-2018 Brett Lajzer
 -- See LICENSE for license information.
 
 -- | A builder for C/C++ code.
@@ -17,13 +17,14 @@ module Dib.Builders.C (
 import Dib.Gatherers
 import Dib.Target
 import Dib.Types
+import Dib.Util
 import Dib.Scanners.CDepScanner
 
 import Data.List as L
+import Data.Monoid
 import Data.Word
 import System.Process (system)
 import System.Directory as D
-import System.Exit
 import System.FilePath as F
 
 import qualified Data.Digest.CRC32 as Hash
@@ -184,13 +185,13 @@ massageFilePath p = T.replace "\\" "_" $ T.replace "/" "_" p
 
 remapObjFile :: BuildLocation -> T.Text -> T.Text
 remapObjFile InPlace f = f
-remapObjFile (BuildDir d) f = d `T.snoc` F.pathSeparator `T.append` massageFilePath f
-remapObjFile (ObjAndBinDirs d _) f = d `T.snoc` F.pathSeparator `T.append` massageFilePath f
+remapObjFile (BuildDir d) f = d `T.snoc` F.pathSeparator <> massageFilePath f
+remapObjFile (ObjAndBinDirs d _) f = d `T.snoc` F.pathSeparator <> massageFilePath f
 
 remapBinFile :: BuildLocation -> T.Text -> T.Text
 remapBinFile InPlace f = f
-remapBinFile (BuildDir d) f = d `T.snoc` F.pathSeparator `T.append` f
-remapBinFile (ObjAndBinDirs _ d) f = d `T.snoc` F.pathSeparator `T.append` f
+remapBinFile (BuildDir d) f = d `T.snoc` F.pathSeparator <> f
+remapBinFile (ObjAndBinDirs _ d) f = d `T.snoc` F.pathSeparator <> f
 
 -- | Given a 'CTargetInfo', will make the directories required to build the project.
 makeBuildDirs :: CTargetInfo -> IO ()
@@ -210,7 +211,7 @@ getCorrectCompileFlags info s = if ".c" `T.isSuffixOf` s then cCompileFlags info
 -- | Given a 'CTargetInfo', produces a 'Target'
 makeCTarget :: CTargetInfo -> Target
 makeCTarget info =
-  let includeDirString = includeOption info `T.append` T.intercalate (" " `T.append` includeOption info) (includeDirs info)
+  let includeDirString = includeOption info <> T.intercalate (" " <> includeOption info) (includeDirs info)
       makeBuildString s t = T.unpack $ T.concat [compiler info, " ", inFileOption info, " ", s, " ", outFileOption info, " ", t, " ", includeDirString, " ", commonCompileFlags info, " ", getCorrectCompileFlags info s]
       makeLinkString ss t = T.unpack $ T.concat [linker info, " ", T.unwords ss, " ", outFileOption info, " ", t, " ", linkFlags info]
       makeArchiveString ss t = T.unpack $ T.concat [archiver info, " ", archiverFlags info, " ", t, " ", T.unwords ss]
@@ -221,21 +222,21 @@ makeCTarget info =
         putStrLn $ "Building: " ++ T.unpack sourceFile
         exitCode <- system buildString
         handleExitCode exitCode t buildString
-      buildCmd _ = return $ Right "Unhandled SrcTransform."
+      buildCmd _ = return $ Left "Unhandled SrcTransform."
 
       linkCmd (ManyToOne ss t) = do
         let linkString = makeLinkString ss t
         putStrLn $ "Linking: " ++ T.unpack t
         exitCode <- system linkString
         handleExitCode exitCode t linkString
-      linkCmd _ = return $ Right "Unhandled SrcTransform."
+      linkCmd _ = return $ Left "Unhandled SrcTransform."
 
       archiveCmd (ManyToOne ss t) = do
         let archiveString = makeArchiveString ss t
         putStrLn $ "Archiving: " ++ T.unpack t
         exitCode <- system archiveString
         handleExitCode exitCode t archiveString
-      archiveCmd _ = return $ Right "Unhandled SrcTransform."
+      archiveCmd _ = return $ Left "Unhandled SrcTransform."
 
       buildDirGatherer = makeCommandGatherer $ makeBuildDirs info
       cppStage = Stage "compile" (map (changeExt "o" (outputLocation info))) (cDepScanner (map T.unpack $ includeDirs info)) (extraCompileDeps info) buildCmd
@@ -244,12 +245,8 @@ makeCTarget info =
   in Target (targetName info) (cTargetHash info) [] [cppStage, if staticLibrary info then archiveStage else linkStage] [buildDirGatherer, makeFileTreeGatherer (srcDir info) (matchExtensionsExcluded [".cpp", ".c"] [excludeFiles $ exclusions info])]
 
 changeExt :: T.Text -> BuildLocation -> SrcTransform -> SrcTransform
-changeExt newExt b (OneToOne l _) = OneToOne l $ remapObjFile b $ T.append (T.dropWhileEnd (/='.') l) newExt
+changeExt newExt b (OneToOne l _) = OneToOne l $ remapObjFile b $ T.dropWhileEnd (/='.') l <> newExt
 changeExt _ _ _ = undefined
-
-handleExitCode :: ExitCode -> T.Text -> String -> IO (Either SrcTransform T.Text)
-handleExitCode ExitSuccess t _ = return $ Left $ OneToOne t ""
-handleExitCode (ExitFailure _) _ e = return $ Right $ T.pack (show e)
 
 combineTransforms :: T.Text -> [SrcTransform] -> [SrcTransform]
 combineTransforms t st = [ManyToOne sources t]
@@ -261,7 +258,7 @@ makeCleanTarget info =
   let cleanCmd (OneToOne s _) = do
         putStrLn $ "removing: " ++ T.unpack s
         D.removeFile (T.unpack s)
-        return $ Left $ OneToOne "" ""
+        return $ Right $ OneToOne "" ""
       cleanCmd _ = error "Should never hit this."
 
       objDir InPlace = srcDir info
@@ -269,10 +266,10 @@ makeCleanTarget info =
       objDir (ObjAndBinDirs d _) = d
 
       programFile InPlace = outputName info
-      programFile (BuildDir d) = d `T.snoc` F.pathSeparator `T.append` outputName info
-      programFile (ObjAndBinDirs _ d) = d `T.snoc` F.pathSeparator `T.append` outputName info
+      programFile (BuildDir d) = d `T.snoc` F.pathSeparator <> outputName info
+      programFile (ObjAndBinDirs _ d) = d `T.snoc` F.pathSeparator <> outputName info
 
       cleanStage = Stage "clean" id return [] cleanCmd
       objectGatherer = makeFileTreeGatherer (objDir $ outputLocation info) (matchExtension ".o")
       programGatherer = makeSingleFileGatherer (programFile $ outputLocation info)
-  in Target ("clean-" `T.append` targetName info) (const 0) [] [cleanStage] [objectGatherer, programGatherer]
+  in Target ("clean-" <> targetName info) (const 0) [] [cleanStage] [objectGatherer, programGatherer]

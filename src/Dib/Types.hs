@@ -1,8 +1,8 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, ExistentialQuantification, OverloadedStrings #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, ExistentialQuantification #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# OPTIONS_HADDOCK hide, prune #-}
 
--- Copyright (c) 2010-2016 Brett Lajzer
+-- Copyright (c) 2010-2018 Brett Lajzer
 -- See LICENSE for license information.
 
 -- | Various types used in dib. Due to certain circumstances, this module does
@@ -18,18 +18,28 @@ import qualified Data.Text as T
 import Data.Word
 
 -- | Type wrapper for the timestamp database.
-type TimestampDB = Map.Map T.Text Integer
+-- Maps checksums to timestamps.
+type TimestampDB = Map.Map Word32 Integer
+
 -- | Type wrapper for the target timestamp database.
+-- Maps target names to timestamp databases
 type TargetTimestampDB = Map.Map T.Text TimestampDB
+
 -- | Type wrapper for the checksum database.
-type ChecksumDB = Map.Map T.Text Word32
+-- Maps checksum of muxed destination string to checksum of muxed source string
+type ChecksumDB = Map.Map Word32 Word32
+
 -- | Type wrapper for the target checksum database.
+-- Maps target name to target-specific checksum
 type TargetChecksumDB = Map.Map T.Text Word32
+
 -- | Type wrapper for the set of currently up-to-date 'Target's.
 type UpToDateTargets = Set.Set Target
+
 -- | Type wrapper for the list of database updates that will happen after
 -- a successful 'Target' build.
-type PendingDBUpdates = Map.Map T.Text Integer
+type PendingDBUpdates = Map.Map Word32 Integer
+
 -- | Type wrapper for the dictionary of arguments that are extracted from the
 -- command line.
 type ArgDict = Map.Map String String
@@ -70,9 +80,14 @@ type InputTransformer = ([SrcTransform] -> [SrcTransform])
 -- a 'SrcTransform' with dependencies included in the input.
 type DepScanner = (SrcTransform -> IO SrcTransform)
 
+-- | Type wrapper for the result of a 'StageFunc'.
+-- Left indicates an error while Right indicates success.
+type StageResult = Either T.Text SrcTransform
+type StageResults = Either T.Text [SrcTransform]
+
 -- | Type wrapper for a function that given a 'SrcTransform', produces either
 -- a 'SrcTransform' containing the output files in the input, or an error.
-type StageFunc = (SrcTransform -> IO (Either SrcTransform T.Text))
+type StageFunc = (SrcTransform -> IO StageResult)
 
 -- | Type describing a build stage.
 -- Takes a name, an 'InputTransformer', 'DepScanner', additional dependencies, and the builder function.
@@ -112,7 +127,7 @@ data Gatherer = forall s . GatherStrategy s => Gatherer s
 type FilterFunc = (T.Text -> Bool)
 
 -- | 'Gatherer' that will return exactly one file.
-data SingleFileGatherer = SingleFileGatherer T.Text
+newtype SingleFileGatherer = SingleFileGatherer T.Text
 
 -- | 'Gatherer' that will return all files in a given directory (but not its
 -- subdirectories) that pass the filter.
@@ -124,7 +139,7 @@ data FileTreeGatherer = FileTreeGatherer T.Text FilterFunc
 
 -- | 'Gatherer' that will run a command and return an empty list.
 -- Useful for making clean 'Target's. Use sparingly.
-data CommandGatherer = CommandGatherer (IO ())
+newtype CommandGatherer = CommandGatherer (IO ())
 
 -- Horrible.
 instance Serialize.Serialize T.Text where

@@ -1,4 +1,4 @@
--- Copyright (c) 2010-2016 Brett Lajzer
+-- Copyright (c) 2010-2018 Brett Lajzer
 -- See LICENSE for license information.
 
 -- | The Simple builder allows you to execute a 'OneToOne' trasformation
@@ -10,14 +10,14 @@ module Dib.Builders.Simple (
 
 import Dib.Gatherers
 import Dib.Types
+import Dib.Util
 
 import qualified Data.Text as T
 import qualified System.Directory as D
 import System.Process (system)
-import System.Exit
 import System.FilePath as P
 
-buildFunc :: (String -> String -> String) -> SrcTransform -> IO (Either SrcTransform T.Text)
+buildFunc :: (String -> String -> String) -> SrcTransform -> IO StageResult
 buildFunc func (OneToOne s t) = do
   let unpackedTarget = T.unpack t
   let unpackedSource = T.unpack s
@@ -26,7 +26,7 @@ buildFunc func (OneToOne s t) = do
   let buildCmd = func unpackedSource unpackedTarget
   exitCode <- system buildCmd
   handleExitCode exitCode t buildCmd
-buildFunc _ _ = return $ Right "Unexpected SrcTransform"
+buildFunc _ _ = return $ Left "Unexpected SrcTransform"
 
 remapFile :: String -> String -> T.Text -> SrcTransform -> SrcTransform
 remapFile src dest ext (OneToOne s _) = OneToOne s $ T.pack $ dest </> makeRelative src (T.unpack (changeExt s ext))
@@ -34,11 +34,6 @@ remapFile _ _ _ _ = error "Unhandled SrcTransform"
 
 changeExt :: T.Text -> T.Text -> T.Text
 changeExt path = T.append (T.dropWhileEnd (/='.') path)
-
---TODO: move to a utility module and factor out of C builder
-handleExitCode :: ExitCode -> T.Text -> String -> IO (Either SrcTransform T.Text)
-handleExitCode ExitSuccess t _ = return $ Left $ OneToOne t ""
-handleExitCode (ExitFailure _) _ e = return $ Right $ T.pack (show e)
 
 -- | The 'makeSimpleTarget' function generates a target.
 -- It takes a name, source directory, destination directory, destination extension,
