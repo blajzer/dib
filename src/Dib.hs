@@ -236,7 +236,8 @@ makeArgDictLookupFuncChecked :: String -> String -> [String] -> ArgDict -> Eithe
 makeArgDictLookupFuncChecked arg defVal validValues dict =
     let partialResult = makeArgDictLookupFunc arg defVal dict
         result = L.find (== partialResult) validValues
-    in maybe (Left $ "ERROR: invalid value \"" ++ partialResult ++ "\" for argument \"" ++ arg ++ "\". Expected one of: [" ++ L.intercalate  ", " validValues ++ "]") Right result
+        errorString = Left $ "ERROR: invalid value \"" ++ partialResult ++ "\" for argument \"" ++ arg ++ "\". Expected one of: [" ++ L.intercalate  ", " validValues ++ "]"
+    in maybe errorString Right result
 
 printSeparator :: IO ()
 printSeparator = putStrLn "============================================================"
@@ -305,12 +306,12 @@ targetIsUpToDate (BuildState _ _ _ _ _ s _) t = Set.member t s
 -- | Partitions out up-to-date mappings
 partitionMappings :: T.Text -> T.Text -> [SrcTransform] -> [T.Text] -> Bool -> BuildM ([SrcTransform], [SrcTransform])
 partitionMappings targetName stageName files extraDeps force = do
-  s <- get
-  extraDepsChanged <- liftIO $ hasSrcChanged (getTimestampDB s) (ManyToOne extraDeps (T.concat [targetName, "^:^", stageName])) extraDeps
+  buildState <- get
+  extraDepsChanged <- liftIO $ hasSrcChanged (getTimestampDB buildState) (ManyToOne extraDeps (T.concat [targetName, "^:^", stageName])) extraDeps
   if force || extraDepsChanged then
       return (files, [])
     else do
-      shouldBuild <- liftIO $ mapM (shouldBuildMapping (getTimestampDB s) (getChecksumDB s)) files
+      shouldBuild <- liftIO $ mapM (shouldBuildMapping (getTimestampDB buildState) (getChecksumDB buildState)) files
       let paired = zip shouldBuild files
       let (a, b) = L.partition fst paired
       return (map snd a, map snd b)
@@ -352,10 +353,7 @@ getTimestamp f = do
 hasChecksumChanged :: ChecksumDB -> [T.Text] -> [T.Text] -> IO Bool
 hasChecksumChanged cdb s d = do
   let (key, cs) = getChecksumPair s d
-  let mapVal = Map.lookup key cdb
-  return $ compareChecksums mapVal cs
-  where compareChecksums (Just mcs) ccs = mcs /= ccs
-        compareChecksums Nothing _ = True
+  return $ Map.lookup key cdb /= Just cs
 
 getChecksumPair :: [T.Text] -> [T.Text] -> (Word32, Word32)
 getChecksumPair s d =
@@ -397,84 +395,118 @@ buildFailFunc (Left err) name = do
 buildFailFunc (Right _) _ = return $ Left ""
 
 runTargetInternal :: Target -> BuildM StageResults
-runTargetInternal t@(Target name hashFunc _ stages gatherers) = do
+runTargetInternal target@(Target name hashFunc _ stages gatherers) = do
   buildState <- get
   let tcdb = getTargetChecksumDB buildState
-  let checksum = hashFunc t
+  let checksum = hashFunc target
   let forceRebuild = checksum /= Map.findWithDefault 0 name tcdb
+
+  -- Gather input files and initialize a bunch of one-to-one mappings for them
   gatheredFiles <- liftIO $ runGatherers gatherers
   let srcTransforms = map (flip OneToOne "") gatheredFiles
+
+  -- Fold over stages, effectively running the build
   liftIO $ putStrLn $ "==== Target: \"" ++ T.unpack name ++ "\""
   stageResult <- foldM (stageFoldFunc name) (Right srcTransforms) $ zip stages $ repeat forceRebuild
 
   -- Update target checksum to prevent future, forced builds
-  buildState <- get
-  let updatedChecksums = Map.insert name (hashFunc t) $ getTargetChecksumDB buildState
-  put $ putTargetChecksumDB buildState updatedChecksums
-  if isRight stageResult then targetSuccessFunc t else buildFailFunc stageResult name
+  currentBuildState <- get
+  let updatedChecksums = Map.insert name checksum $ getTargetChecksumDB currentBuildState
+  put $ putTargetChecksumDB currentBuildState updatedChecksums
+
+  -- Run success or failure function based on the build result
+  if isRight stageResult then targetSuccessFunc target else buildFailFunc stageResult name
 
 targetSuccessFunc :: Target -> BuildM StageResults
-targetSuccessFunc t@(Target name hashFunc _ _ _) = do
+targetSuccessFunc target@(Target name _ _ _ _) = do
   buildState <- get
-  let updatedTargets = Set.insert t $ getUpToDateTargets buildState
+  let updatedTargets = Set.insert target $ getUpToDateTargets buildState
   put $ putUpToDateTargets buildState updatedTargets
   liftIO $ putStrLn $ "Successfully built target \"" ++ T.unpack name ++ "\""
   liftIO $ putStrLn ""
   return $ Right []
 
 stageFoldFunc :: T.Text -> StageResults -> (Stage, Bool) -> BuildM StageResults
-stageFoldFunc targetName (Right t) (s, force) = runStage targetName s force t
+stageFoldFunc targetName (Right t) (stage, force) = runStage targetName stage force t
 stageFoldFunc _ l@(Left _) _ = return l
 
-workerThreadFunc :: (SrcTransform -> IO StageResult) -> MVar [SrcTransform] -> MVar (StageResults, [BuildM ()]) -> MVar (StageResults, [BuildM ()]) -> MVar Int -> IO ()
-workerThreadFunc sf q r f c = do
-  queue <- takeMVar q
+-- Type synonyms for readability
+type BuildQueue = MVar [SrcTransform]
+type ResultAccumulator = MVar (StageResults, [BuildM ()])
+type ActiveThreadCount = MVar Int
+
+-- dib's internal processing is handlded through a work-stealing queue.
+-- A number of threads are spawned, each running this function.
+-- Each thread will pull the queue out and attempt to peel off a transform to build
+-- then append the result to the result accumulator.
+--
+-- When the queue runs out, the threads will shut themselves down until there's only
+-- one thread left. The last thread will move the result accumulator to the final result MVar.
+--
+-- The stageHelper function is waiting for the final result to contain something
+-- so it can continue with the build.
+workerThreadFunc :: StageFunc -> BuildQueue -> ResultAccumulator -> ResultAccumulator -> ActiveThreadCount -> IO ()
+workerThreadFunc stageFunc buildQueue resultAccumulator finalResult threadCount = do
+  queue <- takeMVar buildQueue
   if null queue then do
-      putMVar q queue
-      count <- takeMVar c
+      putMVar buildQueue queue
+      count <- takeMVar threadCount
       let newCount = count - 1
       if newCount == 0 then do
-          putMVar c newCount
-          finalResult <- readMVar r
-          putMVar f finalResult
+          putMVar threadCount newCount
+          result <- readMVar resultAccumulator
+          putMVar finalResult result
           return ()
         else do
-          putMVar c newCount
+          putMVar threadCount newCount
           return ()
     else do
       let workItem = head queue
-      putMVar q (tail queue)
-      taskResult <- sf workItem
+      putMVar buildQueue (tail queue)
+      taskResult <- stageFunc workItem
       let dbThunk = updateDatabase taskResult workItem
-      resultAcc <- takeMVar r
+      result <- takeMVar resultAccumulator
       let combine left@(Left _) _ = left
           combine (Right ml) (Right v) = Right (v : ml)
           combine (Right _) (Left v) = Left v
-      let newResultAcc = (\(res, thunks) -> (combine res taskResult, dbThunk : thunks)) resultAcc
-      putMVar r newResultAcc
-      workerThreadFunc sf q r f c
+      let newResult = (\(res, thunks) -> (combine res taskResult, dbThunk : thunks)) result
+      putMVar resultAccumulator newResult
+      workerThreadFunc stageFunc buildQueue resultAccumulator finalResult threadCount
 
-stageHelper :: (SrcTransform -> IO StageResult) -> Int -> [SrcTransform] -> StageResults -> BuildM StageResults
-stageHelper f m i r = do
-  finalResultMVar <- liftIO newEmptyMVar
-  resultMVar <- liftIO $ newMVar (r, []) -- (overall result, database thunks)
-  queueMVar <- liftIO $ newMVar i
-  threadCountMVar <- liftIO $ newMVar m
-  if null i then
-      return r
+stageHelper :: StageFunc -> Int -> [SrcTransform] -> StageResults -> BuildM StageResults
+stageHelper stageFunc threadCount stageInput previousResult =
+  if null stageInput then
+      return previousResult
     else do
-      liftIO $ replicateM_ m (workerThreadFunc f queueMVar resultMVar finalResultMVar threadCountMVar)
+      -- Create control variables that will hold all of the data the workers use.
+      finalResultMVar <- liftIO newEmptyMVar
+      resultMVar <- liftIO $ newMVar (previousResult, []) -- (overall result, database thunks)
+      queueMVar <- liftIO $ newMVar stageInput
+      threadCountMVar <- liftIO $ newMVar threadCount
+
+      -- Dispatch worker threads and wait on the final result
+      liftIO $ replicateM_ threadCount (workerThreadFunc stageFunc queueMVar resultMVar finalResultMVar threadCountMVar)
       result <- liftIO $ takeMVar finalResultMVar
+
+      -- Issue the pending database updates. These occur here because workers live in IO, not BuildM.
       sequence_ $ snd result
       return $ fst result
 
 runStage :: T.Text -> Stage -> Bool -> [SrcTransform] -> BuildM StageResults
-runStage targetName s@(Stage name _ _ extraDeps f) force m = do
+runStage targetName stage@(Stage name _ _ extraDeps stageFunc) force mappings = do
   liftIO $ putStrLn $ "-- Stage: \"" ++ T.unpack name ++ "\""
-  depScannedFiles <- liftIO $ processMappings s m
+
+  -- do dependency scanning and partition the mappings into ones that
+  -- need building versus up-to-date mappings.
+  depScannedFiles <- liftIO $ processMappings stage mappings
   (targetsToBuild, upToDateTargets) <- partitionMappings targetName name depScannedFiles extraDeps force
-  bs <- get
-  result <- stageHelper f (getMaxBuildJobs bs) targetsToBuild (Right $ map transferUpToDateTarget upToDateTargets)
+  let initialResult = Right $ map transferUpToDateTarget upToDateTargets
+
+  -- run the stage
+  buildState <- get
+  result <- stageHelper stageFunc (getMaxBuildJobs buildState) targetsToBuild initialResult
+
+  -- write pending database entries
   writePendingDBUpdates
   updateDatabaseExtraDeps targetName name result extraDeps
 
@@ -486,9 +518,7 @@ transferUpToDateTarget (ManyToOne _ d) = OneToOne d ""
 transferUpToDateTarget (ManyToMany _ ds) = ManyToOne ds ""
 
 processMappings :: Stage -> [SrcTransform] -> IO [SrcTransform]
-processMappings (Stage _ t d _ _) m = do
-  let transMap = t m --transform input-only mappings into input -> output mappings
-  mapM d transMap
+processMappings (Stage _ inputTransformer depScanner _ _) mappings = mapM depScanner $ inputTransformer mappings
 
 updateDatabase :: Either l r -> SrcTransform -> BuildM ()
 updateDatabase (Left _) _ = return ()
@@ -516,6 +546,8 @@ updateDatabaseExtraDeps targetName stageName result@(Right _) deps = do
   buildstate <- get
   let tdb = getTimestampDB buildstate
   timestamps <- liftIO $ mapM getTimestamp deps
+
+  -- TODO: make specific function for hashing extra deps and also check extra deps for existence when running build and error if they don't
   let filteredResults = filter (\(_, v) -> v /= 0) $ zip (hashTransform $ ManyToOne deps (T.concat [targetName, "^:^", stageName])) timestamps
   let updatedTDB = L.foldl' (\m (k, v) -> Map.insert k v m) tdb filteredResults
   put $ putTimestampDB buildstate updatedTDB
