@@ -515,11 +515,11 @@ updateDatabaseExtraDeps :: T.Text -> T.Text -> StageResults -> [T.Text] -> Build
 updateDatabaseExtraDeps _ _ result@(Left _) _ = return result
 updateDatabaseExtraDeps targetName stageName result@(Right _) deps = do
   buildstate <- get
-  let pdbu = getPendingDBUpdates buildstate
+  let tdb = getTimestampDB buildstate
   timestamps <- liftIO $ mapM getTimestamp deps
   let filteredResults = filter (\(_, v) -> v /= 0) $ zip (hashTransform $ ManyToOne deps (T.concat $ [targetName, "^:^", stageName])) timestamps
-  let updatedPDBU = L.foldl' (\m (k, v) -> Map.insert k v m) pdbu filteredResults
-  put $ putPendingDBUpdates buildstate updatedPDBU
+  let updatedTDB = L.foldl' (\m (k, v) -> Map.insert k v m) tdb filteredResults
+  put $ putTimestampDB buildstate updatedTDB
   return result
 
 writePendingDBUpdates :: BuildM ()
