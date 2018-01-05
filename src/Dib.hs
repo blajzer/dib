@@ -407,14 +407,18 @@ runTargetInternal t@(Target name hashFunc _ stages gatherers) = do
   let srcTransforms = map (flip OneToOne "") gatheredFiles
   liftIO $ putStrLn $ "==== Target: \"" ++ T.unpack name ++ "\""
   stageResult <- foldM (stageFoldFunc name) (Right srcTransforms) $ zip stages $ repeat forceRebuild
+
+  -- Update target checksum to prevent future, forced builds
+  buildState <- get
+  let updatedChecksums = Map.insert name (hashFunc t) $ getTargetChecksumDB buildState
+  put $ putTargetChecksumDB buildState updatedChecksums
   if isRight stageResult then targetSuccessFunc t else buildFailFunc stageResult name
 
 targetSuccessFunc :: Target -> BuildM StageResults
 targetSuccessFunc t@(Target name hashFunc _ _ _) = do
   buildState <- get
   let updatedTargets = Set.insert t $ getUpToDateTargets buildState
-  let updatedChecksums = Map.insert name (hashFunc t) $ getTargetChecksumDB buildState
-  put $ putTargetChecksumDB (putUpToDateTargets buildState updatedTargets) updatedChecksums
+  put $ putUpToDateTargets buildState updatedTargets
   liftIO $ putStrLn $ "Successfully built target \"" ++ T.unpack name ++ "\""
   liftIO $ putStrLn ""
   return $ Right []
