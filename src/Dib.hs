@@ -306,7 +306,7 @@ targetIsUpToDate (BuildState _ _ _ _ _ s _) t = Set.member t s
 partitionMappings :: T.Text -> T.Text -> [SrcTransform] -> [T.Text] -> Bool -> BuildM ([SrcTransform], [SrcTransform])
 partitionMappings targetName stageName files extraDeps force = do
   s <- get
-  extraDepsChanged <- liftIO $ hasSrcChanged (getTimestampDB s) (ManyToOne extraDeps (T.concat $ [targetName, "^:^", stageName])) extraDeps
+  extraDepsChanged <- liftIO $ hasSrcChanged (getTimestampDB s) (ManyToOne extraDeps (T.concat [targetName, "^:^", stageName])) extraDeps
   if force || extraDepsChanged then
       return (files, [])
     else do
@@ -330,14 +330,14 @@ hashText t = Hash.crc32 $ TE.encodeUtf8 t
 
 hashTransform :: SrcTransform -> [Word32]
 hashTransform (OneToOne s d) = [hashText $ T.concat [s, "^^^^", d]]
-hashTransform (OneToMany s ds) = [hashText $ T.concat $ s : "^^^^" : (L.intersperse ":" ds)]
+hashTransform (OneToMany s ds) = [hashText $ T.concat $ s : "^^^^" : L.intersperse ":" ds]
 hashTransform (ManyToOne ss d) = map (\s -> hashText $ T.concat [s, "^^^^", d]) ss
 hashTransform (ManyToMany ss ds) =
   let destMux = L.intersperse ":" ds
   in map (\s -> hashText $ T.concat $ s : "^^^^" : destMux) ss
 
 hasSrcChanged :: TimestampDB -> SrcTransform -> [T.Text] -> IO Bool
-hasSrcChanged m tr f = let filesInMap = zip f $ map (\v -> Map.lookup v m) $ hashTransform tr
+hasSrcChanged m tr f = let filesInMap = zip f $ map (`Map.lookup` m) $ hashTransform tr
                            checkTimeStamps _ (_, Nothing) = return True
                            checkTimeStamps b (file, Just s) = getTimestamp file >>= (\t -> return $ b || (t /= s))
                     in foldM checkTimeStamps False filesInMap
@@ -383,9 +383,8 @@ runTarget t@(Target name _ deps _ _) = do
   buildState <- get
   let outdatedTargets = filter (not.targetIsUpToDate buildState) deps
   depStatus <- foldM buildFoldFunc (Right []) outdatedTargets
-  if isRight depStatus then do
-      result <- runTargetInternal t
-      return result
+  if isRight depStatus then
+      runTargetInternal t
     else
       buildFailFunc depStatus name
 
@@ -517,7 +516,7 @@ updateDatabaseExtraDeps targetName stageName result@(Right _) deps = do
   buildstate <- get
   let tdb = getTimestampDB buildstate
   timestamps <- liftIO $ mapM getTimestamp deps
-  let filteredResults = filter (\(_, v) -> v /= 0) $ zip (hashTransform $ ManyToOne deps (T.concat $ [targetName, "^:^", stageName])) timestamps
+  let filteredResults = filter (\(_, v) -> v /= 0) $ zip (hashTransform $ ManyToOne deps (T.concat [targetName, "^:^", stageName])) timestamps
   let updatedTDB = L.foldl' (\m (k, v) -> Map.insert k v m) tdb filteredResults
   put $ putTimestampDB buildstate updatedTDB
   return result
