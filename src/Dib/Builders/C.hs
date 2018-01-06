@@ -249,7 +249,7 @@ changeExt newExt b (OneToOne l _) = OneToOne l $ remapObjFile b $ T.dropWhileEnd
 changeExt _ _ _ = undefined
 
 combineTransforms :: T.Text -> [SrcTransform] -> [SrcTransform]
-combineTransforms t st = [ManyToOne sources t]
+combineTransforms t st = [ManyToOne (L.sort sources) t]
   where sources = foldl' (\l (OneToOne s _) -> l ++ [s]) [] st
 
 -- | Given a 'CTargetInfo', produces a 'Target' that will clean the project.
