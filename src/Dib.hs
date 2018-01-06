@@ -308,7 +308,7 @@ targetIsUpToDate (BuildState _ _ _ _ _ s _) t = Set.member t s
 partitionMappings :: T.Text -> T.Text -> [SrcTransform] -> [T.Text] -> Bool -> BuildM ([SrcTransform], [SrcTransform])
 partitionMappings targetName stageName files extraDeps force = do
   buildState <- get
-  extraDepsChanged <- liftIO $ hasSrcChanged (getTimestampDB buildState) (ManyToOne extraDeps (T.concat [targetName, "^:^", stageName])) extraDeps
+  extraDepsChanged <- liftIO $ haveExtraDepsChanged (getTimestampDB buildState) targetName stageName extraDeps
   if force || extraDepsChanged then
       return (files, [])
     else do
@@ -320,7 +320,7 @@ partitionMappings targetName stageName files extraDeps force = do
 (<||>) :: IO Bool -> IO Bool -> IO Bool
 (<||>) = liftM2 (||)
 
--- function for filtering FileMappings based on them already being taken care of
+-- Function for filtering FileMappings based on them already being up-to-date
 shouldBuildMapping :: TimestampDB -> ChecksumDB -> SrcTransform -> IO Bool
 shouldBuildMapping t c src@(OneToOne s d) = hasSrcChanged t src [s] <||> hasChecksumChanged c [s] [d] <||> fmap not (D.doesFileExist $ T.unpack d)
 shouldBuildMapping t c src@(OneToMany s ds) = hasSrcChanged t src [s] <||> hasChecksumChanged c [s] ds  <||> fmap (not.and) (mapM (D.doesFileExist.T.unpack) ds)
@@ -338,18 +338,49 @@ hashTransform (ManyToMany ss ds) =
   let destMux = L.intersperse ":" ds
   in map (\s -> hashText $ T.concat $ s : "^^^^" : destMux) ss
 
+hashExtraDeps :: T.Text -> T.Text -> [T.Text] -> [Word32]
+hashExtraDeps targetName stageName extraDeps =
+  let destName = T.concat [targetName, "^:^", stageName]
+  in map (\s -> hashText $ T.concat [s, "^^^^", destName]) extraDeps
+
 hasSrcChanged :: TimestampDB -> SrcTransform -> [T.Text] -> IO Bool
-hasSrcChanged m tr f = let filesInMap = zip f $ map (`Map.lookup` m) $ hashTransform tr
-                           checkTimeStamps _ (_, Nothing) = return True
-                           checkTimeStamps b (file, Just s) = getTimestamp file >>= (\t -> return $ b || (t /= s))
-                    in foldM checkTimeStamps False filesInMap
+hasSrcChanged tdb transform files =
+  let filesInMap = zip files $ map (`Map.lookup` tdb) $ hashTransform transform
+      checkTimeStamps acc (file, Nothing) = D.doesFileExist (T.unpack file) >>= (\e -> return $ acc || e)
+      checkTimeStamps acc (file, Just s) = getTimestamp file >>= (\t -> return $ acc || (t /= s))
+  in foldM checkTimeStamps False filesInMap
+
+haveExtraDepsChanged :: TimestampDB -> T.Text -> T.Text -> [T.Text] -> IO Bool
+haveExtraDepsChanged tdb targetName stageName extraDeps =
+  let filesInMap = zip extraDeps $ map (`Map.lookup` tdb) $ hashExtraDeps targetName stageName extraDeps
+      checkTimeStamps acc (file, Nothing) = do
+        doesExist <- D.doesFileExist $ T.unpack file
+        if doesExist
+          then return True
+          else do
+            putStrLn $ "WARNING: Missing extra dependency \"" ++ T.unpack file ++ "\", check build configuration."
+            return acc
+      checkTimeStamps b (file, Just s) = do
+        timestamp <- getTimestamp file
+        let result = b || (timestamp /= s)
+        if timestamp == 0
+          then do
+            putStrLn $ "WARNING: Missing extra dependency \"" ++ T.unpack file ++ "\", check build configuration."
+            return result
+          else
+            return result
+  in foldM checkTimeStamps False filesInMap
 
 getTimestamp :: T.Text -> IO Integer
-getTimestamp f = do
-  let unpackedFileName = T.unpack f
+getTimestamp file = do
+  let unpackedFileName = T.unpack file
   doesExist <- D.doesFileExist unpackedFileName
-  if doesExist then D.getModificationTime unpackedFileName >>= extractSeconds else return 0
-  where extractSeconds s = return $ (fromIntegral.fromEnum.utcTimeToPOSIXSeconds) s
+  if doesExist
+    then do
+      modificationTime <- D.getModificationTime unpackedFileName
+      return $ (fromIntegral.fromEnum.utcTimeToPOSIXSeconds) modificationTime
+    else
+      return 0
 
 hasChecksumChanged :: ChecksumDB -> [T.Text] -> [T.Text] -> IO Bool
 hasChecksumChanged cdb s d = do
@@ -543,9 +574,7 @@ updateDatabaseExtraDeps targetName stageName result@(Right _) deps = do
   buildstate <- get
   let tdb = getTimestampDB buildstate
   timestamps <- liftIO $ mapM getTimestamp deps
-
-  -- TODO: make specific function for hashing extra deps and also check extra deps for existence when running build and error if they don't
-  let filteredResults = filter (\(_, v) -> v /= 0) $ zip (hashTransform $ ManyToOne deps (T.concat [targetName, "^:^", stageName])) timestamps
+  let filteredResults = filter (\(_, v) -> v /= 0) $ zip (hashExtraDeps targetName stageName deps) timestamps
   let updatedTDB = L.foldl' (\m (k, v) -> Map.insert k v m) tdb filteredResults
   put $ putTimestampDB buildstate updatedTDB
   return result
