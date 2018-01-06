@@ -113,6 +113,7 @@ import qualified Data.Text.Encoding as TE
 import qualified GHC.Conc as GHC
 import qualified System.Directory as D
 import qualified System.Environment as Env
+import Data.Either
 import Data.Maybe
 import Data.Time.Clock
 import Data.Time.Clock.POSIX
@@ -371,10 +372,6 @@ buildFoldFunc (Right _) t@(Target name _ _ _ _) = do
   newBuildState <- get
   put $ putCurrentTargetName newBuildState oldTargetName
   return result
-
-isRight :: Either a b -> Bool
-isRight (Right _) = True
-isRight _ = False
 
 runTarget :: Target -> BuildM StageResults
 runTarget t@(Target name _ deps _ _) = do
