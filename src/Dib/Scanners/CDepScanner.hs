@@ -9,6 +9,7 @@ module Dib.Scanners.CDepScanner (
   ) where
 
 import Dib.Types
+import qualified Data.List as L
 import qualified Data.Set as S
 import qualified Data.Text as T
 import qualified System.Directory as Dir
@@ -141,7 +142,7 @@ spiderLauncher file = do
 getDepsForFile :: [FilePath] -> FilePath -> IO [T.Text]
 getDepsForFile includeDirs file = do
   (_, s) <- runStateT (runDepGatherer $ spiderLauncher file) PS {currentDeps=S.empty, searchPaths=[F.dropFileName file, "."] ++ includeDirs }
-  return $ map (T.pack.getPathFromDep) (S.toList (currentDeps s))
+  return $ L.sort $ map (T.pack.getPathFromDep) (S.toList (currentDeps s))
 
 -- | Takes in a list of include directories, extra dependencies, a 'SrcTransform',
 -- and returns a new 'SrcTransform' with the dependencies injected into the source
