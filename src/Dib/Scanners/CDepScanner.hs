@@ -113,41 +113,41 @@ pathToDependency path = Dependency (F.takeFileName path) path
 
 spider :: forall (m :: * -> *).(MonadIO m, MonadState ParseState m) => String -> m ()
 spider file = do
-  s <- get
-  paths <- filterM (includeFilter $ currentDeps s) $ possibleFilenames file (searchPaths s)
+  state <- get
+  paths <- filterM (includeFilter $ currentDeps state) $ possibleFilenames file (searchPaths state)
   spiderHelper paths
   return ()
     where
-      includeFilter deps f = do
-        exists <- liftIO $ Dir.doesFileExist f
-        return $ exists && not (S.member (pathToDependency f) deps)
+      includeFilter deps file = do
+        exists <- liftIO $ Dir.doesFileExist file
+        return $ exists && not (S.member (pathToDependency file) deps)
 
 spiderHelper :: forall (m :: * -> *).(MonadIO m, MonadState ParseState m) => [FilePath] -> m ()
 spiderHelper [] =  return ()
 spiderHelper (file:_) = do
-  c <- liftIO $ readFile file
-  let deps = gatherDependencies c
-  s <- get
-  put $ s {currentDeps = S.insert (pathToDependency file) (currentDeps s) }
+  contents <- liftIO $ readFile file
+  let deps = gatherDependencies contents
+  state <- get
+  put $ state {currentDeps = S.insert (pathToDependency file) (currentDeps state) }
   mapM_ spider deps
   return ()
 
 spiderLauncher :: forall (m :: * -> *).(MonadIO m, MonadState ParseState m) => FilePath -> m ()
 spiderLauncher file = do
-  c <- liftIO $ readFile file
-  let deps = gatherDependencies c
+  contents <- liftIO $ readFile file
+  let deps = gatherDependencies contents
   mapM_ spider deps
   return ()
 
 getDepsForFile :: [FilePath] -> FilePath -> IO [T.Text]
 getDepsForFile includeDirs file = do
-  (_, s) <- runStateT (runDepGatherer $ spiderLauncher file) PS {currentDeps=S.empty, searchPaths=[F.dropFileName file, "."] ++ includeDirs }
-  return $ L.sort $ map (T.pack.getPathFromDep) (S.toList (currentDeps s))
+  (_, state) <- runStateT (runDepGatherer $ spiderLauncher file) PS {currentDeps=S.empty, searchPaths=[F.dropFileName file, "."] ++ includeDirs }
+  return $ L.sort $ map (T.pack.getPathFromDep) (S.toList (currentDeps state))
 
 -- | Takes in a list of include directories, extra dependencies, a 'SrcTransform',
 -- and returns a new 'SrcTransform' with the dependencies injected into the source
 -- side.
 cDepScanner :: [FilePath] -> SrcTransform -> IO SrcTransform
-cDepScanner includeDirs (OneToOne i o) = getDepsForFile includeDirs (T.unpack i) >>= \d -> return $ ManyToOne (i:d) o
-cDepScanner includeDirs (OneToMany i o) = getDepsForFile includeDirs (T.unpack i) >>= \d -> return $ ManyToMany (i:d) o
+cDepScanner includeDirs (OneToOne input output) = getDepsForFile includeDirs (T.unpack input) >>= \deps -> return $ ManyToOne (input:deps) output
+cDepScanner includeDirs (OneToMany input output) = getDepsForFile includeDirs (T.unpack input) >>= \deps -> return $ ManyToMany (input:deps) output
 cDepScanner _ _ = error "Unimplemented. Implement this if it is a valid relationship."

@@ -18,18 +18,18 @@ import System.Process (system)
 import System.FilePath as P
 
 buildFunc :: (String -> String -> String) -> SrcTransform -> IO StageResult
-buildFunc func (OneToOne s t) = do
-  let unpackedTarget = T.unpack t
-  let unpackedSource = T.unpack s
+buildFunc func (OneToOne source target) = do
+  let unpackedTarget = T.unpack target
+  let unpackedSource = T.unpack source
   D.createDirectoryIfMissing True $ takeDirectory unpackedTarget
   putStrLn $ "Building: " ++ unpackedSource ++ " -> " ++ unpackedTarget
   let buildCmd = func unpackedSource unpackedTarget
   exitCode <- system buildCmd
-  handleExitCode exitCode t buildCmd
+  handleExitCode exitCode target buildCmd
 buildFunc _ _ = return $ Left "Unexpected SrcTransform"
 
 remapFile :: String -> String -> T.Text -> SrcTransform -> SrcTransform
-remapFile src dest ext (OneToOne s _) = OneToOne s $ T.pack $ dest </> makeRelative src (T.unpack (changeExt s ext))
+remapFile src dest ext (OneToOne source _) = OneToOne source $ T.pack $ dest </> makeRelative src (T.unpack (changeExt source ext))
 remapFile _ _ _ _ = error "Unhandled SrcTransform"
 
 changeExt :: T.Text -> T.Text -> T.Text
@@ -39,6 +39,6 @@ changeExt path = T.append (T.dropWhileEnd (/='.') path)
 -- It takes a name, source directory, destination directory, destination extension,
 -- gather filter, and a function to build the command line.
 makeSimpleTarget :: T.Text -> T.Text -> T.Text -> T.Text -> FilterFunc -> [T.Text] -> (String -> String -> String) -> Target
-makeSimpleTarget name src dest ext f extraDeps buildCmdBuilder =
+makeSimpleTarget name src dest ext filterFunc extraDeps buildCmdBuilder =
   let stage = Stage name (map $ remapFile (T.unpack src) (T.unpack dest) ext) return extraDeps (buildFunc buildCmdBuilder)
-  in Target name (const 0) [] [stage] [makeFileTreeGatherer src f]
+  in Target name (const 0) [] [stage] [makeFileTreeGatherer src filterFunc]
