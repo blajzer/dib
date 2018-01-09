@@ -10,6 +10,7 @@ import Dib.Gatherers
 import Dib.Types
 
 import qualified Data.Text as T
+import qualified System.Console.ANSI as ANSI
 import qualified System.Directory as D
 import System.FilePath as P
 
@@ -18,7 +19,10 @@ copyFunc (OneToOne source target) = do
   let unpackedTarget = T.unpack target
   let unpackedSource = T.unpack source
   D.createDirectoryIfMissing True $ takeDirectory unpackedTarget
-  putStrLn $ "Copying: " ++ unpackedSource ++ " -> " ++ unpackedTarget
+  ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.White]
+  putStr "Copying: "
+  ANSI.setSGR [ANSI.Reset]
+  putStrLn $ unpackedSource ++ " -> " ++ unpackedTarget
   D.copyFile unpackedSource unpackedTarget
   return $ Right (OneToOne target "")
 copyFunc _ = return $ Left "Unexpected SrcTransform"

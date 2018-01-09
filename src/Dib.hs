@@ -111,6 +111,7 @@ import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified GHC.Conc as GHC
+import qualified System.Console.ANSI as ANSI
 import qualified System.Directory as D
 import qualified System.Environment as Env
 import Data.Either
@@ -137,13 +138,13 @@ dib targets = do
 
   -- Validate that we have at least one target
   if null targets
-    then putStrLn "ERROR: Invalid configuration, no targets defined."
+    then printError "ERROR: Invalid configuration, no targets defined."
     else do
       -- Validate targets
       let allTargets = gatherAllTargets targets
       let targetErrors = validateTargets allTargets
       if isJust targetErrors
-        then putStrLn $ "ERROR: Invalid targets:\n" ++ fromJust targetErrors
+        then printError $ "ERROR: Invalid targets:\n" ++ fromJust targetErrors
         else do
           let buildArgs = parseArgs args allTargets numProcs
           let selectedTarget = buildTarget buildArgs
@@ -151,7 +152,7 @@ dib targets = do
 
           -- Validate that we're trying to build something that exists
           if isNothing theTarget
-            then putStrLn $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\""
+            then printError $ "ERROR: Invalid target specified: \"" ++ T.unpack selectedTarget ++ "\""
             else do
               -- load the database
               dbLoadStart <- getCurrentTime
@@ -170,8 +171,16 @@ dib targets = do
               dbSaveEnd <- getCurrentTime
 
               -- output build stats
+              ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Black]
               putStrLn $ "DB load/save took " ++ show (diffUTCTime dbLoadEnd dbLoadStart) ++ "/" ++ show (diffUTCTime dbSaveEnd dbSaveStart) ++ " seconds."
               putStrLn $ "Build took " ++ show (diffUTCTime endTime startTime) ++ " seconds."
+              ANSI.setSGR [ANSI.Reset]
+
+printError :: String -> IO ()
+printError errorStr = do
+  ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Red]
+  putStrLn errorStr
+  ANSI.setSGR [ANSI.Reset]
 
 gatherAllTargetsInternal :: [Target] -> Set.Set Target -> Set.Set Target
 gatherAllTargetsInternal (t:ts) s =
@@ -239,9 +248,6 @@ makeArgDictLookupFuncChecked arg defVal validValues dict =
         result = L.find (== partialResult) validValues
         errorString = Left $ "ERROR: invalid value \"" ++ partialResult ++ "\" for argument \"" ++ arg ++ "\". Expected one of: [" ++ L.intercalate  ", " validValues ++ "]"
     in maybe errorString Right result
-
-printSeparator :: IO ()
-printSeparator = putStrLn "============================================================"
 
 runBuild :: BuildM a -> BuildState -> IO (a, BuildState)
 runBuild m = runStateT (runBuildImpl m)
@@ -358,14 +364,20 @@ haveExtraDepsChanged tdb targetName stageName extraDeps =
         if doesExist
           then return True
           else do
-            putStrLn $ "WARNING: Missing extra dependency \"" ++ T.unpack file ++ "\", check build configuration."
+            ANSI.setSGR [ANSI.SetConsoleIntensity ANSI.BoldIntensity, ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Black, ANSI.SetColor ANSI.Background ANSI.Vivid ANSI.Yellow]
+            putStr $ "WARNING:"
+            ANSI.setSGR [ANSI.Reset]
+            putStrLn $ " Missing extra dependency \"" ++ T.unpack file ++ "\", check build configuration."
             return acc
       checkTimeStamps b (file, Just s) = do
         timestamp <- getTimestamp file
         let result = b || (timestamp /= s)
         if timestamp == 0
           then do
-            putStrLn $ "WARNING: Missing extra dependency \"" ++ T.unpack file ++ "\", check build configuration."
+            ANSI.setSGR [ANSI.SetConsoleIntensity ANSI.BoldIntensity, ANSI.SetColor ANSI.Foreground ANSI.Dull ANSI.Black, ANSI.SetColor ANSI.Background ANSI.Vivid ANSI.Yellow]
+            putStr $ "WARNING:"
+            ANSI.setSGR [ANSI.Reset]
+            putStrLn $ " Missing extra dependency \"" ++ T.unpack file ++ "\", check build configuration."
             return result
           else
             return result
@@ -416,9 +428,13 @@ runTarget t@(Target name _ deps _ _) = do
 
 buildFailFunc :: StageResults -> T.Text -> BuildM StageResults
 buildFailFunc (Left err) name = do
-  liftIO printSeparator
-  liftIO $ putStr $ "ERROR: Error building target \"" ++ T.unpack name ++ "\": "
-  liftIO $ putStrLn $ T.unpack err
+  liftIO $ do
+    ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.White]
+    putStrLn "============================================================"
+    ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Red]
+    putStrLn $ "ERROR: Error building target \"" ++ T.unpack name ++ "\": "
+    ANSI.setSGR [ANSI.Reset]
+    putStrLn $ T.unpack err
   return $ Left ""
 buildFailFunc (Right _) _ = return $ Left ""
 
@@ -434,7 +450,12 @@ runTargetInternal target@(Target name hashFunc _ stages gatherers) = do
   let srcTransforms = map (flip OneToOne "") gatheredFiles
 
   -- Fold over stages, effectively running the build
-  liftIO $ putStrLn $ "==== Target: \"" ++ T.unpack name ++ "\""
+  liftIO $ do
+    ANSI.setSGR [ANSI.SetConsoleIntensity ANSI.BoldIntensity, ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Blue]
+    putStr "==== Target: "
+    ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.White]
+    putStrLn $ T.unpack name
+    ANSI.setSGR [ANSI.Reset]
   stageResult <- foldM (stageFoldFunc name) (Right srcTransforms) $ zip stages $ repeat forceRebuild
 
   -- Update target checksum to prevent future, forced builds
@@ -450,8 +471,13 @@ targetSuccessFunc target@(Target name _ _ _ _) = do
   buildState <- get
   let updatedTargets = Set.insert target $ getUpToDateTargets buildState
   put $ putUpToDateTargets buildState updatedTargets
-  liftIO $ putStrLn $ "Successfully built target \"" ++ T.unpack name ++ "\""
-  liftIO $ putStrLn ""
+  liftIO $ do
+    ANSI.setSGR [ANSI.SetConsoleIntensity ANSI.BoldIntensity, ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Green]
+    putStr "Successfully built target: "
+    ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.White]
+    putStrLn $ T.unpack name
+    putStrLn ""
+    ANSI.setSGR [ANSI.Reset]
   return $ Right []
 
 stageFoldFunc :: T.Text -> StageResults -> (Stage, Bool) -> BuildM StageResults
@@ -522,7 +548,12 @@ stageHelper stageFunc threadCount stageInput previousResult =
 
 runStage :: T.Text -> Stage -> Bool -> [SrcTransform] -> BuildM StageResults
 runStage targetName stage@(Stage name _ _ extraDeps stageFunc) force mappings = do
-  liftIO $ putStrLn $ "-- Stage: \"" ++ T.unpack name ++ "\""
+  liftIO $ do
+    ANSI.setSGR [ANSI.SetConsoleIntensity ANSI.BoldIntensity, ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.Magenta]
+    putStr $ "== Stage: "
+    ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.White]
+    putStrLn $ T.unpack name
+    ANSI.setSGR [ANSI.Reset]
 
   -- do dependency scanning and partition the mappings into ones that
   -- need building versus up-to-date mappings.

@@ -30,6 +30,7 @@ import System.FilePath as F
 import qualified Data.Digest.CRC32 as Hash
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
+import qualified System.Console.ANSI as ANSI
 
 -- | The record type that is used to pass configuration info for the C builder.
 data CTargetInfo = CTargetInfo {
@@ -217,21 +218,30 @@ makeCTarget info =
       buildCmd (ManyToOne sources target) = do
         let sourceFile = head sources
         let buildString = makeBuildString sourceFile target
-        putStrLn $ "Building: " ++ T.unpack sourceFile
+        ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.White]
+        putStr "Building: "
+        ANSI.setSGR [ANSI.Reset]
+        putStrLn $ T.unpack sourceFile
         exitCode <- system buildString
         handleExitCode exitCode target buildString
       buildCmd _ = return $ Left "Unhandled SrcTransform."
 
       linkCmd (ManyToOne sources target) = do
         let linkString = makeLinkString sources target
-        putStrLn $ "Linking: " ++ T.unpack target
+        ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.White]
+        putStr "Linking: "
+        ANSI.setSGR [ANSI.Reset]
+        putStrLn $ T.unpack target
         exitCode <- system linkString
         handleExitCode exitCode target linkString
       linkCmd _ = return $ Left "Unhandled SrcTransform."
 
       archiveCmd (ManyToOne sources target) = do
         let archiveString = makeArchiveString sources target
-        putStrLn $ "Archiving: " ++ T.unpack target
+        ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.White]
+        putStr "Archiving: "
+        ANSI.setSGR [ANSI.Reset]
+        putStrLn $ T.unpack target
         exitCode <- system archiveString
         handleExitCode exitCode target archiveString
       archiveCmd _ = return $ Left "Unhandled SrcTransform."
@@ -254,7 +264,10 @@ combineTransforms target transforms = [ManyToOne (L.sort sources) target]
 makeCleanTarget :: CTargetInfo -> Target
 makeCleanTarget info =
   let cleanCmd (OneToOne input _) = do
-        putStrLn $ "removing: " ++ T.unpack input
+        ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.White]
+        putStr "Removing: "
+        ANSI.setSGR [ANSI.Reset]
+        putStrLn $ T.unpack input
         D.removeFile (T.unpack input)
         return $ Right $ OneToOne "" ""
       cleanCmd _ = error "Should never hit this."

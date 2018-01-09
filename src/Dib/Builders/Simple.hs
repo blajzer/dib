@@ -13,6 +13,7 @@ import Dib.Types
 import Dib.Util
 
 import qualified Data.Text as T
+import qualified System.Console.ANSI as ANSI
 import qualified System.Directory as D
 import System.Process (system)
 import System.FilePath as P
@@ -22,7 +23,10 @@ buildFunc func (OneToOne source target) = do
   let unpackedTarget = T.unpack target
   let unpackedSource = T.unpack source
   D.createDirectoryIfMissing True $ takeDirectory unpackedTarget
-  putStrLn $ "Building: " ++ unpackedSource ++ " -> " ++ unpackedTarget
+  ANSI.setSGR [ANSI.SetColor ANSI.Foreground ANSI.Vivid ANSI.White]
+  putStr "Building: "
+  ANSI.setSGR [ANSI.Reset]
+  putStrLn $ unpackedSource ++ " -> " ++ unpackedTarget
   let buildCmd = func unpackedSource unpackedTarget
   exitCode <- system buildCmd
   handleExitCode exitCode target buildCmd
